@@ -1,12 +1,21 @@
 #!/usr/bin/env python
 
-import sys, json
+import sys, json, collections
 import splunklib.client as client
 
 from splunklib.searchcommands import \
     dispatch, ReportingCommand, Configuration, Option, validators
 
 
+def update(d, u):
+    for k, v in u.iteritems():
+        if isinstance(v, collections.Mapping):
+            r = update(d.get(k, {}), v)
+            d[k] = r
+        else:
+            d[k] = u[k]
+    return d
+    
 @Configuration(clear_required_fields=True, requires_preop=True)
 class outputTransKVCommand(ReportingCommand):
     """ %(synopsis)
@@ -41,24 +50,20 @@ class outputTransKVCommand(ReportingCommand):
 
     collections_data_endpoint = 'storage/collections/data/'
     output_array = []
+
     
     def reduce(self, events):
-        # Put your event transformation code here
+        # create empty result dictionary
+        result_dict = dict()
+        
+        # loop through events and update the result dictionary
         for event in events:
-            event["_key"] = event[self.primary_key]
-            self.output_array.append(event)
-            if (len(self.output_array)%1000 == 0) and not self.testmode:
-                app_service = client.Service(token=self.input_header["sessionKey"])
-                request2 = app_service.request(
-                    self.collections_data_endpoint + self.kv_store + "/batch_save",
-                    method = 'post',
-                    headers = [('content-type', 'application/json')],
-                    body = json.dumps(self.output_array),
-                    owner = 'nobody',
-                    app = 'SA-transactional_kv'
-                )
-                self.output_array = []
-            yield {"type": type(event), "event": event, "json": "[" + json.dumps(event) + "]"}
+            event_dict = {event[self.primary_key]: event}
+            update(result_dict, event_dict)
+        
+        # output the values of the result dictionary
+        for k, v in result_dict.iteritems():
+            yield v
 
 
 dispatch(outputTransKVCommand, sys.argv, sys.stdin, sys.stdout, __name__)
