@@ -107,7 +107,7 @@ class outputTransKVCommand(ReportingCommand):
 
         # check if the output_array actually contains elements before pushing it into the KV store
         if output_array and not self.testmode:
-            for group in grouper(2, output_array):
+            for group in grouper(1000, output_array):
                 response = app_service.request(
                     self.collections_data_endpoint + kv_store + "/batch_save",
                     method = 'post',
