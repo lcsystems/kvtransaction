@@ -17,6 +17,8 @@ def update(d, u):
             d["start_time"] = str(min(Decimal(d.get("start_time",'inf')),Decimal(u[k])))
             if u[k] != d["start_time"]:
                 d["end_time"] = str(max(Decimal(d.get("start_time",'-inf')),Decimal(u[k])))
+        elif k == "event_count":
+            d[k] = d.get(k, 0) + u[k]
         else:
             d[k] = u[k]
     return d
@@ -70,6 +72,7 @@ class outputTransKVCommand(ReportingCommand):
         sorted_events = sorted(events, key=lambda k: k['_time'])
         # loop through events and update the result dictionary
         for event in sorted_events:
+            event["event_count"] = 1
             event_as_dict = {event[self.transaction_id]: event}
             update(result_dict, event_as_dict)
         
