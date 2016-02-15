@@ -7,7 +7,6 @@ from decimal import *
 from splunklib.searchcommands import \
     dispatch, ReportingCommand, Configuration, Option, validators
 
-
 def update(d, u):
     for k, v in u.iteritems():
         if isinstance(v, collections.Mapping):
@@ -73,8 +72,12 @@ class outputTransKVCommand(ReportingCommand):
         # loop through events and update the result dictionary
         for event in sorted_events:
             event["event_count"] = 1
-            event_as_dict = {event[self.transaction_id]: event}
-            update(result_dict, event_as_dict)
+            self.logger.debug("New event: %s" % event)
+            if result_dict.get(event[self.transaction_id]):
+                update(result_dict[event[self.transaction_id]], event)
+            else:
+                result_dict[event[self.transaction_id]] = event   
+            self.logger.debug("New result_dict entry: %s" % result_dict[event[self.transaction_id]])
         
         response = app_service.request(
             self.collections_data_endpoint + kv_store,
