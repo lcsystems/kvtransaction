@@ -13,9 +13,9 @@ def update(d, u):
             r = update(d.get(k, {}), v)
             d[k] = r
         elif k == "_time":
-            d["start_time"] = str(min(Decimal(d.get("start_time",'inf')),Decimal(u[k])))
-            if u[k] != d["start_time"]:
-                d["end_time"] = str(max(Decimal(d.get("start_time",'-inf')),Decimal(u[k])))
+            d["_time"] = str(min(Decimal(d.get("_time",'inf')),Decimal(u[k])))
+            duration = Decimal(u[k]) - Decimal(d.get("_time"))
+            d["duration"] = str(max(Decimal(d.get("duration",'-inf')),duration))
         elif k == "event_count":
             d[k] = d.get(k, 0) + u[k]
         else:
@@ -64,6 +64,7 @@ class outputTransKVCommand(ReportingCommand):
         app_service = client.Service(token=self.input_header["sessionKey"])
         output_array = []
         kv_store = self.fieldnames[0]
+        cnt_loop = 0
 
         # create empty result dictionary
         result_dict = dict()
@@ -71,6 +72,8 @@ class outputTransKVCommand(ReportingCommand):
         sorted_events = sorted(events, key=lambda k: k['_time'])
         # loop through events and update the result dictionary
         for event in sorted_events:
+            cnt_loop += 1
+            self.logger.debug("Count sorted events loop: %s" % cnt_loop)
             event["event_count"] = 1
             self.logger.debug("New event: %s" % event)
             if result_dict.get(event[self.transaction_id]):
@@ -84,7 +87,7 @@ class outputTransKVCommand(ReportingCommand):
             method = 'get',
             headers = [('content-type', 'application/json')],
             owner = 'nobody',
-            app = 'SA-transactional_kv'
+            app = 'SA-kvtransaction'
         )
         
         if response.status != 200:
@@ -93,7 +96,10 @@ class outputTransKVCommand(ReportingCommand):
         body = response.body.read()
         data = json.loads(body)
         
+        cnt_loop = 0
         for item in data:
+            cnt_loop += 1
+            self.logger.debug("Count kv store loop: %s" % cnt_loop)
             current_key = item.get(self.transaction_id)
             if current_key:
                 update_record = result_dict.get(current_key)
@@ -103,8 +109,11 @@ class outputTransKVCommand(ReportingCommand):
                     output_array.append(item)
                     yield item
 
+        cnt_loop = 0
         # output the values of the result dictionary
         for k, v in result_dict.iteritems():
+            cnt_loop += 1
+            self.logger.debug("Count output loop: %s" % cnt_loop)
             output_array.append(v)
             yield v
 
@@ -117,7 +126,7 @@ class outputTransKVCommand(ReportingCommand):
                     headers = [('content-type', 'application/json')],
                     body = json.dumps(group),
                     owner = 'nobody',
-                    app = 'SA-transactional_kv'
+                    app = 'SA-kvtransaction'
                 )
 
                 if response.status != 200:
