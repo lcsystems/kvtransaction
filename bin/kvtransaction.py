@@ -31,7 +31,7 @@ def grouper(n, iterable):
        yield chunk
     
 @Configuration(clear_required_fields=True, requires_preop=True)
-class kvtransactionCommand(ReportingCommand):
+class kvtransaction(ReportingCommand):
     """ %(synopsis)
 
     ##Syntax
@@ -133,4 +133,4 @@ class kvtransactionCommand(ReportingCommand):
                     raise Exception, "%d (%s)" % (response.status, response.reason)
 
             
-dispatch(kvtransactionCommand, sys.argv, sys.stdin, sys.stdout, __name__)
+dispatch(kvtransaction, sys.argv, sys.stdin, sys.stdout, __name__)
