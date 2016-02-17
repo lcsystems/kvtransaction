@@ -13,12 +13,14 @@ def update(d, u):
             r = update(d.get(k, {}), v)
             d[k] = r
         elif k == "_time":
+            # update _time with the earliest timestamp found by transaction_id
             d["_time"] = str(min(Decimal(d.get("_time",'inf')),Decimal(u[k])))
+            # recalculate duration based on new _time
             duration = Decimal(u[k]) - Decimal(d.get("_time"))
             d["duration"] = str(max(Decimal(d.get("duration",'-inf')),duration))
         elif k == "event_count":
             d[k] = d.get(k, 0) + u[k]
-        else:
+        elif u[k] != '':
             d[k] = u[k]
     return d
 
