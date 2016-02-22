@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-import sys, json, collections, itertools
-import splunklib.client as client
+import sys, json, collections, itertools, urllib
+import splunk.rest as rest
 
 from decimal import *
 from splunklib.searchcommands import \
-    dispatch, ReportingCommand, Configuration, Option, validators
+    dispatch, StreamingCommand, Configuration, Option, validators
 
 def update(d, u):
     for k, v in u.iteritems():
@@ -32,8 +32,8 @@ def grouper(n, iterable):
            return
        yield chunk
     
-@Configuration(clear_required_fields=True, requires_preop=True)
-class kvtransaction(ReportingCommand):
+@Configuration()
+class kvtransaction(StreamingCommand):
     """ %(synopsis)
 
     ##Syntax
@@ -67,68 +67,63 @@ class kvtransaction(ReportingCommand):
     collections_data_endpoint = 'storage/collections/data/'
     
 
-    def reduce(self, events):
+    def stream(self, events):
         # initialize an app service to communicate via REST
-        app_service = client.Service(token=self.input_header["sessionKey"])
+        sessionKey = self.input_header["sessionKey"]
+        self.logger.debug("sessionKey is '%s'" % sessionKey)
         output_array = []
+        trans_id_list = []
+        
+        for event in events:
+            trans_id_list.append({self.transaction_id: event[self.transaction_id]})
+            output_array.append(event)
 
-        # create empty result dictionary
-        result_dict = dict()
-        # sort events by _time ascending to update the result_dict with the latest data at last
-        sorted_events = sorted(events, key=lambda k: k['_time'])
-        # loop through events and update the result dictionary
-        for event in sorted_events:
-            event["event_count"] = 1
-            self.logger.debug("New event: %s" % event)
-            if result_dict.get(event[self.transaction_id]):
-                update(result_dict[event[self.transaction_id]], event)
-            else:
-                result_dict[event[self.transaction_id]] = event   
-            self.logger.debug("New result_dict entry: %s" % result_dict[event[self.transaction_id]])
+        # make the trans_id_list unique
+        trans_id_list = {v[self.transaction_id]:v for v in trans_id_list}.values()
         
-        response = app_service.request(
-            self.collections_data_endpoint + self.collection,
-            method = 'get',
-            headers = [('content-type', 'application/json')],
-            owner = 'nobody',
-            app = 'SA-kvtransaction'
-        )
-        
-        if response.status != 200:
-            raise Exception, "%d (%s)" % (response.status, response.reason)
-        
-        body = response.body.read()
-        data = json.loads(body)
-        
-        for item in data:
-            current_key = item.get(self.transaction_id)
-            if current_key:
-                update_record = result_dict.get(current_key)
-                if update_record:
-                    update(item, update_record)
-                    del result_dict[current_key]
-                    output_array.append(item)
-                    yield item
+        if len(trans_id_list) > 0:
+            # create filter query for requesting kv_store entries
+            query = {"$or": trans_id_list}
+            # retrieve results from kv store
+            self.logger.debug("Filter for transaction ids: %s" % query)
+            uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+            self.logger.debug("Retrieving transactions from kv store")
+            serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
+            self.logger.debug("Got rest API response with status %s" % serverResponse['status'])
+            kvtrans = json.loads(serverContent)
+            self.logger.debug("Converted response to JSON object")
 
-        # output the values of the result dictionary
-        for k, v in result_dict.iteritems():
-            output_array.append(v)
-            yield v
-
+            # convert list of dict to dict of dict
+            kvtrans_dict = {item[self.transaction_id]:item for item in kvtrans}
+            # self.logger.debug("Converted list to dict: %s" % kvtrans_dict)
+            for event in output_array:
+                if kvtrans_dict.get(event[self.transaction_id]):
+                    self.logger.debug("Found existing transaction with id: %s" % event[self.transaction_id])
+                else:
+                    self.logger.debug("New transaction with id: %s" % event[self.transaction_id])
+                    self.logger.debug("current kv content: %s" % kvtrans_dict)
+                kvevent = kvtrans_dict.get(event[self.transaction_id], event)
+                old_time = Decimal(kvevent.get('_time','inf'))
+                new_time = min(old_time,Decimal(event['_time']))
+                old_duration = Decimal(kvevent.get('duration','0'))
+                new_duration = max(old_time,Decimal(event['_time']) - new_time)
+                new_event_cnt = kvevent.get('event_count',0) + 1
+                event['start_time'] = str(new_time)
+                event['duration'] = str(new_duration)
+                event['event_count'] = new_event_cnt
+                yield event
+                # update event _time field for storing latest data into kvstore
+                event['_time'] = str(new_time)
+                event['_key'] = event[self.transaction_id]
+                kvtrans_dict[event[self.transaction_id]] = event
+                
         # check if the output_array actually contains elements before pushing it into the KV store
         if output_array and not self.testmode:
             for group in grouper(1000, output_array):
-                response = app_service.request(
-                    self.collections_data_endpoint + self.collection + "/batch_save",
-                    method = 'post',
-                    headers = [('content-type', 'application/json')],
-                    body = json.dumps(group),
-                    owner = 'nobody',
-                    app = 'SA-kvtransaction'
-                )
-
-                if response.status != 200:
-                    raise Exception, "%d (%s)" % (response.status, response.reason)
-
+                entries = json.dumps(group)
+                uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s/batch_save' % self.collection
+                serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey, jsonargs=entries)
+                response = json.loads(serverContent)
+                #return response["_key"]
             
 dispatch(kvtransaction, sys.argv, sys.stdin, sys.stdout, __name__)
