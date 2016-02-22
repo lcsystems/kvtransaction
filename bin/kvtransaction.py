@@ -58,6 +58,12 @@ class kvtransaction(ReportingCommand):
         **Description:** set **testmode** to true if the results should not be written to the kv store. default is **false**''',
         require=False, default=False, validate=validators.Boolean())
 
+    collection = Option(
+        doc='''
+        **Syntax:** **value=***<string>*
+        **Description:** set **testmode** to true if the results should not be written to the kv store. default is **false**''',
+        require=True)
+
     collections_data_endpoint = 'storage/collections/data/'
     
 
@@ -65,8 +71,6 @@ class kvtransaction(ReportingCommand):
         # initialize an app service to communicate via REST
         app_service = client.Service(token=self.input_header["sessionKey"])
         output_array = []
-        kv_store = self.fieldnames[0]
-        cnt_loop = 0
 
         # create empty result dictionary
         result_dict = dict()
@@ -74,8 +78,6 @@ class kvtransaction(ReportingCommand):
         sorted_events = sorted(events, key=lambda k: k['_time'])
         # loop through events and update the result dictionary
         for event in sorted_events:
-            cnt_loop += 1
-            self.logger.debug("Count sorted events loop: %s" % cnt_loop)
             event["event_count"] = 1
             self.logger.debug("New event: %s" % event)
             if result_dict.get(event[self.transaction_id]):
@@ -85,7 +87,7 @@ class kvtransaction(ReportingCommand):
             self.logger.debug("New result_dict entry: %s" % result_dict[event[self.transaction_id]])
         
         response = app_service.request(
-            self.collections_data_endpoint + kv_store,
+            self.collections_data_endpoint + self.collection,
             method = 'get',
             headers = [('content-type', 'application/json')],
             owner = 'nobody',
@@ -98,10 +100,7 @@ class kvtransaction(ReportingCommand):
         body = response.body.read()
         data = json.loads(body)
         
-        cnt_loop = 0
         for item in data:
-            cnt_loop += 1
-            self.logger.debug("Count kv store loop: %s" % cnt_loop)
             current_key = item.get(self.transaction_id)
             if current_key:
                 update_record = result_dict.get(current_key)
@@ -111,11 +110,8 @@ class kvtransaction(ReportingCommand):
                     output_array.append(item)
                     yield item
 
-        cnt_loop = 0
         # output the values of the result dictionary
         for k, v in result_dict.iteritems():
-            cnt_loop += 1
-            self.logger.debug("Count output loop: %s" % cnt_loop)
             output_array.append(v)
             yield v
 
@@ -123,7 +119,7 @@ class kvtransaction(ReportingCommand):
         if output_array and not self.testmode:
             for group in grouper(1000, output_array):
                 response = app_service.request(
-                    self.collections_data_endpoint + kv_store + "/batch_save",
+                    self.collections_data_endpoint + self.collection + "/batch_save",
                     method = 'post',
                     headers = [('content-type', 'application/json')],
                     body = json.dumps(group),
