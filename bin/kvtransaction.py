@@ -64,6 +64,12 @@ class kvtransaction(StreamingCommand):
         **Description:** set **testmode** to true if the results should not be written to the kv store. default is **false**''',
         require=True)
 
+    mvlist = Option(
+        doc='''
+        **Syntax:** **value=***<string>*
+        **Description:** set **testmode** to true if the results should not be written to the kv store. default is **false**''',
+        require=False, default=False, validate=validators.Boolean())
+
     collections_data_endpoint = 'storage/collections/data/'
     
 
@@ -102,11 +108,27 @@ class kvtransaction(StreamingCommand):
                 else:
                     self.logger.debug("New transaction with id: %s" % event[self.transaction_id])
                     self.logger.debug("current kv content: %s" % kvtrans_dict)
-                kvevent = kvtrans_dict.get(event[self.transaction_id], event)
-                old_time = Decimal(kvevent.get('_time','inf'))
-                new_time = min(old_time,Decimal(event['_time']))
-                old_duration = Decimal(kvevent.get('duration','0'))
-                new_duration = max(old_time,Decimal(event['_time']) - new_time)
+                kvevent = kvtrans_dict.get(event[self.transaction_id], {})
+                if self.mvlist:
+                    if self.fieldnames:
+                        iter_list = self.fieldnames
+                    else:
+                        iter_list = list(event.keys())
+                
+                self.logger.debug("iterating over fields: %s" % iter_list)
+                for f in iter_list:
+                    if f == self.transaction_id or f == '_time':
+                        self.logger.debug("Do NOT generate multi valued fields for '%s'" % f)
+                    else:
+                        self.logger.debug("current event field '%s' with value '%s'" % (f, event[f]))
+                        kvfield = kvevent.get(f, [])
+                        self.logger.debug("current kv field '%s' with value '%s'" % (f, kvfield))
+                        kvfield.append(event[f])
+                        event[f] = kvfield
+                        self.logger.debug("new event field '%s' with value '%s'" % (f, event[f]))
+                
+                new_time = min(Decimal(kvevent.get('_time','inf')),Decimal(event['_time']))
+                new_duration = max(Decimal(kvevent.get('duration','0')),Decimal(event['_time']) - new_time)
                 new_event_cnt = kvevent.get('event_count',0) + 1
                 event['start_time'] = str(new_time)
                 event['duration'] = str(new_duration)
@@ -115,7 +137,7 @@ class kvtransaction(StreamingCommand):
                 # update event _time field for storing latest data into kvstore
                 event['_time'] = str(new_time)
                 event['_key'] = event[self.transaction_id]
-                kvtrans_dict[event[self.transaction_id]] = event
+                kvtrans_dict[event['_key']] = event
                 
         # check if the output_array actually contains elements before pushing it into the KV store
         if output_array and not self.testmode:
@@ -124,6 +146,5 @@ class kvtransaction(StreamingCommand):
                 uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s/batch_save' % self.collection
                 serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey, jsonargs=entries)
                 response = json.loads(serverContent)
-                #return response["_key"]
             
 dispatch(kvtransaction, sys.argv, sys.stdin, sys.stdout, __name__)
