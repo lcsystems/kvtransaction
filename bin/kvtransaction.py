@@ -103,11 +103,6 @@ class kvtransaction(StreamingCommand):
             kvtrans_dict = {item[self.transaction_id]:item for item in kvtrans}
             # self.logger.debug("Converted list to dict: %s" % kvtrans_dict)
             for event in output_array:
-                if kvtrans_dict.get(event[self.transaction_id]):
-                    self.logger.debug("Found existing transaction with id: %s" % event[self.transaction_id])
-                else:
-                    self.logger.debug("New transaction with id: %s" % event[self.transaction_id])
-                    self.logger.debug("current kv content: %s" % kvtrans_dict)
                 kvevent = kvtrans_dict.get(event[self.transaction_id], {})
                 if self.mvlist:
                     if self.fieldnames:
@@ -123,13 +118,16 @@ class kvtransaction(StreamingCommand):
                             self.logger.debug("current event field '%s' with value '%s'" % (f, event[f]))
                             kvfield = kvevent.get(f, [])
                             self.logger.debug("current kv field '%s' with value '%s'" % (f, kvfield))
+                            self.logger.debug("current type of kv field '%s' is '%s'" % (f, type(kvfield)))
+                            if not isinstance(kvfield, list):
+                                kvfield = [kvfield]
                             kvfield.append(event[f])
                             event[f] = kvfield
                             self.logger.debug("new event field '%s' with value '%s'" % (f, event[f]))
                 
                 new_time = min(Decimal(kvevent.get('_time','inf')),Decimal(event['_time']))
                 new_duration = max(Decimal(kvevent.get('duration','0')),Decimal(event['_time']) - new_time)
-                new_event_cnt = kvevent.get('event_count',0) + 1
+                new_event_cnt = int(kvevent.get('event_count',0)) + 1
                 event['start_time'] = str(new_time)
                 event['duration'] = str(new_duration)
                 event['event_count'] = new_event_cnt
