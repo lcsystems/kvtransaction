@@ -114,18 +114,18 @@ class kvtransaction(StreamingCommand):
                         iter_list = self.fieldnames
                     else:
                         iter_list = list(event.keys())
-                
-                self.logger.debug("iterating over fields: %s" % iter_list)
-                for f in iter_list:
-                    if f == self.transaction_id or f == '_time':
-                        self.logger.debug("Do NOT generate multi valued fields for '%s'" % f)
-                    else:
-                        self.logger.debug("current event field '%s' with value '%s'" % (f, event[f]))
-                        kvfield = kvevent.get(f, [])
-                        self.logger.debug("current kv field '%s' with value '%s'" % (f, kvfield))
-                        kvfield.append(event[f])
-                        event[f] = kvfield
-                        self.logger.debug("new event field '%s' with value '%s'" % (f, event[f]))
+                    
+                    self.logger.debug("iterating over fields: %s" % iter_list)
+                    for f in iter_list:
+                        if f == self.transaction_id or f == '_time':
+                            self.logger.debug("Do NOT generate multi valued fields for '%s'" % f)
+                        else:
+                            self.logger.debug("current event field '%s' with value '%s'" % (f, event[f]))
+                            kvfield = kvevent.get(f, [])
+                            self.logger.debug("current kv field '%s' with value '%s'" % (f, kvfield))
+                            kvfield.append(event[f])
+                            event[f] = kvfield
+                            self.logger.debug("new event field '%s' with value '%s'" % (f, event[f]))
                 
                 new_time = min(Decimal(kvevent.get('_time','inf')),Decimal(event['_time']))
                 new_duration = max(Decimal(kvevent.get('duration','0')),Decimal(event['_time']) - new_time)
