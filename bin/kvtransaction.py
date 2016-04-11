@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import sys, json, collections, itertools, urllib
+import sys, json, collections, itertools, re, base64
+import urllib, hashlib
 import splunk.rest as rest
 
 from decimal import *
@@ -119,105 +120,130 @@ class kvtransaction(StreamingCommand):
                 current_duration    = 0
                 
                 for event in output_array:
-                    ## Get corresponding KV store entry
-                    #            
-                    kvevent = kvtrans_dict.get(event[self.transaction_id], {})
+                    if event[self.transaction_id] == id[self.transaction_id]:                  
+                        ## Get corresponding KV store entry
+                        #            
+                        kvevent = kvtrans_dict.get(event[self.transaction_id], {})
 
-                    ## Define mvlist behavior
-                    #
-                    if self.mvlist in kvtransaction.truth_values:
-                        self.mvlist = kvtransaction.truth_values[self.mvlist]
-                    self.logger.debug("Parameter mvlist set to %s." % self.mvlist)
-
-                    ## Handle list definitions
-                    #
-                    if not isinstance(self.mvlist, bool):
-                        iter_list = [i.strip() for i in self.mvlist.split(',')]
-                        self.logger.debug("Parameter iter_list set to %s." % iter_list)
-                        
-                        ## Check if iter_list contains invalid fieldnames
+                        ## Generate event hash
+                        ## Only handle events that didn't already contribute to the transaction from this point onwards
                         #
-                        for i in iter_list:
-                            contained = False
-                            for j in event.keys():
-                                if i == j:
-                                    contained = True
-                            if not contained:
-                                raise ValueError('The argument "mvlist" contains non-existent fieldnames: {}'.format(i))
-                        if self.fieldnames:
+                        event['hashes'] = str(hashlib.md5(json.dumps(event)).hexdigest())
+                        contributed     = False
+                        kvfield         = kvevent.get('hashes', [])
+                        #self.logger.debug("Event hash is %s." % event['hashes'])
+                        if not isinstance(kvfield, list):
+                            kvfield = [kvfield]
+                        for hash in kvfield:
+                            ## Determine if event has already contributed
+                            #
+                            if event['hashes'] == hash:
+                                contributed = True
+                                break
+                        ## If event has already contributed to the current transaction
+                        ## Skip any further processing
+                        #
+                        if contributed:
+                            event['start_time']         = str(kvevent.get('start_time'))
+                            event['duration']           = str(kvevent.get('duration'))
+                            event['_time']              = str(kvevent.get('_time'))
+                            event['event_count']        = int(kvevent.get('event_count',0)) - 1
+                            event['_key']               = event[self.transaction_id]
+                            kvtrans_dict[event['_key']] = event
+                            continue
+                        ## Else handle event as usual
+                        #
+                        else:
+                            kvfield.append(event['hashes'])
+                            event['hashes'] = kvfield
+                            
+                        ## Define mvlist behavior
+                        #
+                        if self.mvlist in kvtransaction.truth_values:
+                            self.mvlist = kvtransaction.truth_values[self.mvlist]
+                        self.logger.debug("Parameter mvlist set to %s." % self.mvlist)
+
+                        if not isinstance(self.mvlist, bool):
+                            iter_list = [i.strip() for i in self.mvlist.split(',')]
+                            self.logger.debug("Parameter iter_list set to %s." % iter_list)
+                            
+                            ## Check if iter_list contains invalid fieldnames
+                            #
                             for i in iter_list:
                                 contained = False
-                                for j in self.fieldnames:
+                                for j in event.keys():
                                     if i == j:
                                         contained = True
+                                ## TODO: This might have to be removed if events of different formats with different contents shall be aggregated
+                                #
                                 if not contained:
-                                    ## Adjust iter_list to fieldnames
+                                    raise ValueError('The argument "mvlist" contains non-existent fieldnames: {}'.format(i))
+                            if self.fieldnames:
+                                for i in iter_list:
+                                    contained = False
+                                    for j in self.fieldnames:
+                                        if i == j:
+                                            contained = True
+                                    if not contained:
+                                        ## Adjust iter_list to fieldnames
+                                        #
+                                        iter_list.remove(i)
+                            
+                            ## Process fields (determine new field values for KV store entries)
+                            #                        
+                            self.logger.debug("Iterating over fields: %s." % iter_list)
+                            for field in iter_list:
+                                ## Do not treat transaction ID and time as mv fields
+                                #
+                                if field == self.transaction_id or field == '_time':
+                                    self.logger.debug("Do NOT generate multi valued fields for '%s'." % field)
+                                    continue
+                                else:
+                                    kvfield = kvevent.get(field, [])
+                                    self.logger.debug("Current event field '%s' with value '%s'." % (field, event[field]))
+                                    self.logger.debug("Current KV field '%s' with value '%s'." % (field, kvfield))
+                                    self.logger.debug("Current type of KV field '%s' is '%s'." % (field, type(kvfield)))
+                                    if not isinstance(kvfield, list):
+                                        kvfield = [kvfield]
+                                    kvfield.append(event[field])
+                                    ## Control deduplication
                                     #
-                                    iter_list.remove(i)
+                                    if self.mvdedup:
+                                        kvfield = list(set(kvfield))
+                                    event[field] = kvfield
+                                    self.logger.debug("New event field '%s' with value '%s'." % (field, event[field]))
                         
-                        ## Process fields (determine new field values for KV store entries)
-                        #                        
-                        self.logger.debug("Iterating over fields: %s." % iter_list)
-                        for field in iter_list:
-                            ## Do not treat transaction ID and time as mv fields
-                            #
-                            if field == self.transaction_id or field == '_time':
-                                self.logger.debug("Do NOT generate multi valued fields for '%s'." % field)
-                                continue
+                        ## Handle boolean definitions
+                        #
+                        elif self.mvlist:
+                            if self.fieldnames:
+                                iter_list = self.fieldnames
                             else:
-                                kvfield = kvevent.get(field, [])
-                                self.logger.debug("Current event field '%s' with value '%s'." % (field, event[field]))
-                                self.logger.debug("Current KV field '%s' with value '%s'." % (field, kvfield))
-                                self.logger.debug("Current type of KV field '%s' is '%s'." % (field, type(kvfield)))
-                                if not isinstance(kvfield, list):
-                                    kvfield = [kvfield]
-                                kvfield.append(event[field])
-                                ## Control deduplication
+                                iter_list = list(event.keys())
+                            ## Process fields (determine new field values for KV store entries)
+                            #                        
+                            for field in iter_list:
+                                ## Do not treat transaction ID and time as mv fields
                                 #
-                                if self.mvdedup:
-                                    kvfield = list(set(kvfield))
-                                event[field] = kvfield
-                                self.logger.debug("New event field '%s' with value '%s'." % (field, event[field]))
-                    
-                    ## Handle boolean definitions
-                    #
-                    elif self.mvlist:
-                        if self.fieldnames:
-                            iter_list = self.fieldnames
-                        else:
-                            iter_list = list(event.keys())
-                        ## Process fields (determine new field values for KV store entries)
-                        #                        
-                        for field in iter_list:
-                            ## Do not treat transaction ID and time as mv fields
-                            #
-                            if field == self.transaction_id or field == '_time':
-                                continue
-                            else:
-                                kvfield = kvevent.get(field, [])
-                                if not isinstance(kvfield, list):
-                                    kvfield = [kvfield]
-                                kvfield.append(event[field])
-                                ## Control deduplication
-                                #
-                                if self.mvdedup:
-                                    kvfield = list(set(kvfield))
-                                event[field] = kvfield
+                                if field == self.transaction_id or field == '_time':
+                                    continue
+                                else:
+                                    kvfield = kvevent.get(field, [])
+                                    if not isinstance(kvfield, list):
+                                        kvfield = [kvfield]
+                                    kvfield.append(event[field])
+                                    ## Control deduplication
+                                    #
+                                    if self.mvdedup:
+                                        kvfield = list(set(kvfield))
+                                    event[field] = kvfield
+     
+                        ## Calculate new transaction properties
+                        #
+                        event['event_count']        = int(kvevent.get('event_count',0)) + 1
+                        event['_key']               = event[self.transaction_id]
+                        kvtrans_dict[event['_key']] = event
 
-                    ## Calculate new transaction properties
-                    #
-                    # TODO: Modify event_count calculation?
-                    new_event_cnt               = int(kvevent.get('event_count',0)) + 1             
-                    new_time                    = min(Decimal(kvevent.get('_time','inf')), Decimal(event['_time']))
-                    new_duration                = max(Decimal(kvevent.get('duration','0')), Decimal(event['_time']) - new_time)
-                    event['start_time']         = str(new_time)
-                    event['duration']           = str(new_duration)
-                    event['event_count']        = new_event_cnt
-                    event['_time']              = str(new_time)
-                    event['_key']               = event[self.transaction_id]
-                    kvtrans_dict[event['_key']] = event
-                
-                    if event[self.transaction_id] == id[self.transaction_id]:
                         if event['event_count'] > current_event_count:
                             current_event_count = event['event_count']
                         if Decimal(event['_time']) > Decimal(current_max_time):

@@ -9,6 +9,8 @@
 
 ## Changelog
 #
+- v1.3  - Implemented checksums to enable proper collection backfilling
+
 - v1.2  - Added README file
         - Added verbose comments in code
         - Added mvdedup parameter
@@ -26,10 +28,9 @@
 ## TODO
 #
 - Optimize code as it is mainly functional at the moment
-- Implement checksums to be able to do a proper backfill without duplication
 - Implement commands for housekeeping (move closed transactions to a summary)
         
 ## Installation
 #
 - Installation on Search Heads as usual
-- Create collections as needed containing the mandatory fields _time, duration, event_count
+- Create collections as needed containing the mandatory fields _time, duration, event_count, hashes
