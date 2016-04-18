@@ -9,13 +9,23 @@
 
 ## Changelog
 
-- v1.4  - Added initial version of the "outputkvtransaction" command for collection housekeeping
+- v1.4.5
+        - Now using Splunk SDK for Python version 1.5.0
+        
+        - Bugfixing regarding event aggregation and attribute calculation, slight code modifications
+        
+        - Events which did not actively contribute to a transaction will not cause a stored transaction to be displayed
+
+- v1.4  
+        - Added initial version of the "outputkvtransaction" command for collection housekeeping
 
         - Prettyfied README file
 
-- v1.3  - Implemented checksums to enable proper collection backfilling
+- v1.3  
+        - Implemented checksums to enable proper collection backfilling
 
-- v1.2  - Added README file
+- v1.2  
+        - Added README file
 
         - Added verbose comments in code
         
@@ -32,24 +42,24 @@
 
 - kvtransaction
 
-  - When event_count hits 2500 a new event begins
+        - When aggregating bigger amounts of data new transactions for the same id might be generated erroneously (due to process forking?)
 
-  - When setting mvlist=f only the latest event is written to the kv store (expected?)
+        - When setting mvlist=f only the latest event is written to the kv store (expected?)
 
-  - mvdedup deduplicates all values, even the ones already stored (expected?)
+        - mvdedup deduplicates all values, even the ones already stored (expected?)
 
 - outputkvtransaction
 
-  - Does not currently return events in correct timeorder
+        - Does not currently return events in correct timeorder
   
-  - Events retrieved from KV Store currently cannot be displayed as raw events (use table * as a workaround)
+        - Events retrieved from KV Store currently cannot be displayed as raw events (use table * as a workaround)
 
 - Custom validator does not accept comma- or space-separated values (this seems to be "working as designed")
 
 
 ## TODO
 
-- Bugfixing
+- Bugfixing and runtime optimization
 
 - Optimize code as it is mainly functional at the moment
 
@@ -57,13 +67,13 @@
 
 - kvtransaction
 
-  - Add parameters maxspan, maxpause and maxevents
+        - TBD: Add parameters maxspan, maxpause and maxevents
 
-  - Add handling for optional fields status, tag, end_time
+        - TBD: Add handling for optional fields status, tag, end_time
 
 - outputkvtransaction
 
-  - Not all parameters are implemented/working at the moment (see comments in code)
+        - Not all parameters are implemented/working at the moment (see comments in code)
 
 
 ## Installation
