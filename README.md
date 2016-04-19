@@ -9,6 +9,9 @@
 
 ## Changelog
 
+- v1.4.6
+        - Code restructuration and optimization
+        
 - v1.4.5
         - Now using Splunk SDK for Python version 1.5.0
         
@@ -42,6 +45,8 @@
 
 - kvtransaction
 
+        - v1.4.6: Displayed output will be too verbose to read. Will be removed in a later commit.
+
         - When aggregating bigger amounts of data new transactions for the same id might be generated erroneously (due to process forking?)
 
         - When setting mvlist=f only the latest event is written to the kv store (expected?)
@@ -58,6 +63,8 @@
 
 
 ## TODO
+
+- Implement a better performing method to write to kv store
 
 - Bugfixing and runtime optimization
 
