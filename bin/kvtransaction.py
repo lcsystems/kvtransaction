@@ -118,6 +118,7 @@ class kvtransaction(StreamingCommand):
 
         id_list  = {v[self.transaction_id]:v for v in id_list}.values()
         key_list = list(key_list)
+        event_iterator = list(event_list)
 
 
         ## Set mvlist behavior for all relevant fields
@@ -159,7 +160,7 @@ class kvtransaction(StreamingCommand):
             uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
             serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
             kvtransactions                = json.loads(serverContent)
-            transaction_dict              = {item[self.transaction_id]:item for item in kvtransactions}
+            transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
             #self.logger.debug("Currently stored transactions: %s." % transaction_dict)
 
 
@@ -168,7 +169,7 @@ class kvtransaction(StreamingCommand):
             for id in id_list:
                 event_count = 0
    
-                for event in event_list:
+                for event in event_iterator:
                     if event[self.transaction_id] == id[self.transaction_id]:
                         ## Buffer KV store entry (transaction) correspondig with the current event as orderedDict
                         #
@@ -234,14 +235,13 @@ class kvtransaction(StreamingCommand):
                         transaction_dict[event['_key']] = event
                      
 
-                ## Yield the correct events for each transaction ID
-                #
-                for event in event_list:
-                    if event[self.transaction_id] == id[self.transaction_id] and int(event['event_count']) == event_count:
-                        yield event
-                        results_list.append(event)
-
-          
+            ## Yield the correct events for each transaction ID
+            #
+            for transaction in transaction_dict:
+                event = transaction_dict.get(transaction, {})
+                yield event
+                results_list.append(event)
+                
         ## Push into KV store piecemeal in 1000 item chunks, if transactions got updated or created
         #
         if results_list and not self.testmode:
