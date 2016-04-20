@@ -9,6 +9,13 @@
 
 ## Changelog
 
+- v1.5a
+        - Now using Search Command Protocol v2 (chunked processing mode)
+        
+        - Further code optimization
+        
+        - Renamed field "hashes" to "_hashes" to prevent it from getting displayed
+
 - v1.4.6
         - Code restructuration and optimization
         
@@ -45,9 +52,12 @@
 
 - kvtransaction
 
-        - v1.4.6: Displayed output will be too verbose to read. Will be removed in a later commit.
-
-        - When aggregating bigger amounts of data new transactions for the same id might be generated erroneously (due to process forking?)
+        - With the current implementation of Search Command Protocol v2 it is not possible to retrieve the current session key,
+          thus valid login credentials have to be provided in plain text inside the script.
+          
+        - Searching over all time after having done a partial backfill won't result in a complete backfill
+        
+        - Transactions won't be displayed in the correct time order
 
         - When setting mvlist=f only the latest event is written to the kv store (expected?)
 
@@ -64,11 +74,8 @@
 
 ## TODO
 
-- Implement a better performing method to write to kv store
 
-- Bugfixing and runtime optimization
-
-- Optimize code as it is mainly functional at the moment
+- Bugfixing
 
 - Remove debug logging from release version when finished developing
 
@@ -87,4 +94,4 @@
 
 - Installation on Search Heads as usual
 
-- Create collections as needed containing the mandatory fields _time, duration, event_count, hashes
+- Create collections as needed containing the mandatory fields _time, duration, event_count, _hashes
