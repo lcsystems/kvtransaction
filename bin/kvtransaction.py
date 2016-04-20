@@ -84,7 +84,7 @@ class kvtransaction(StreamingCommand):
         
         event_list       = []
         results_list     = []
-        id_list          = []     # TODO: Migrate to set
+        id_list          = []     # TODO: Migrate to set?
         field_list       = []
         key_list         = set()
         transaction_dict = {}
@@ -118,7 +118,6 @@ class kvtransaction(StreamingCommand):
 
         id_list  = {v[self.transaction_id]:v for v in id_list}.values()
         key_list = list(key_list)
-        event_iterator = list(event_list)
 
 
         ## Set mvlist behavior for all relevant fields
@@ -164,75 +163,71 @@ class kvtransaction(StreamingCommand):
             #self.logger.debug("Currently stored transactions: %s." % transaction_dict)
 
 
-            ## Process events by transaction ID
+            ## Process events
             #
-            for id in id_list:
-                event_count = 0
-   
-                for event in event_iterator:
-                    if event[self.transaction_id] == id[self.transaction_id]:
-                        ## Buffer KV store entry (transaction) correspondig with the current event as orderedDict
-                        #
-                        kvevent = transaction_dict.get(event[self.transaction_id], {})
-                        #self.logger.debug("Corresponding KV event: %s." % kvevent)
+            for event in event_iterator:
+                ## Buffer KV store entry (transaction) correspondig with the current event as orderedDict
+                #
+                kvevent = transaction_dict.get(event[self.transaction_id], {})
+                #self.logger.debug("Corresponding KV event: %s." % kvevent)
 
 
-                        ## Check if the event already contributed to the transaction
-                        ## If so, skip further processing entirely
-                        #
-                        contributed = False
-                        kvhashes    = kvevent.get('_hashes', [])
-                        if not isinstance(kvhashes, list):
-                            kvhashes = [kvhashes]
+                ## Check if the event already contributed to the transaction
+                ## If so, skip further processing entirely
+                #
+                contributed = False
+                kvhashes    = kvevent.get('_hashes', [])
+                if not isinstance(kvhashes, list):
+                    kvhashes = [kvhashes]
 
-                        for hash in kvhashes:
-                            if event['_hashes'] == hash:
-                                contributed = True
-                                break
+                for hash in kvhashes:
+                    if event['_hashes'] == hash:
+                        contributed = True
+                        break
 
-                        if contributed:
-                            event_list = [events for events in event_list if not event]
-                            #self.logger.debug("Skipped processing for event %s." % event)
+                if contributed:
+                    #event_list = [events for events in event_list if not event]
+                    #self.logger.debug("Skipped processing for event %s." % event)
+                    continue
+                else:
+                    kvhashes.append(event['_hashes'])
+                    event['_hashes'] = kvhashes
+
+
+                ## Determine the transaction's new field values
+                #
+                if self.mvlist or not isinstance(self.mvlist, bool):                                           
+                    for field in field_list:
+                        if field == self.transaction_id or field == '_time' or field == '_hashes':
                             continue
                         else:
-                            kvhashes.append(event['_hashes'])
-                            event['_hashes'] = kvhashes
+                            kvfield = kvevent.get(field, [])
+                            if not isinstance(kvfield, list):
+                                kvfield = [kvfield]
+                            kvfield.append(event[field])
+                            
+                            ## Control deduplication
+                            #
+                            if self.mvdedup:
+                                kvfield = list(set(kvfield))
+                            event[field] = kvfield
+
+                if not self.mvlist:
+                    pass
 
 
-                        ## Determine the transaction's new field values
-                        #
-                        if self.mvlist or not isinstance(self.mvlist, bool):                                           
-                            for field in field_list:
-                                if field == self.transaction_id or field == '_time' or field == '_hashes':
-                                    continue
-                                else:
-                                    kvfield = kvevent.get(field, [])
-                                    if not isinstance(kvfield, list):
-                                        kvfield = [kvfield]
-                                    kvfield.append(event[field])
-                                    
-                                    ## Control deduplication
-                                    #
-                                    if self.mvdedup:
-                                        kvfield = list(set(kvfield))
-                                    event[field] = kvfield
-
-                        if not self.mvlist:
-                            pass
-
-
-                        ## Calculate the transaction's new properties
-                        #
-                        current_min_time                = min(Decimal(kvevent.get('_time','inf')), Decimal(event['_time']))
-                        current_max_time                = max(Decimal(kvevent.get('_time',0)) + Decimal(kvevent.get('duration',0)), Decimal(event['_time']))
-                        event_count                     = int(kvevent.get('event_count',0)) + 1
-                        #current_duration                = max(Decimal(kvevent.get('duration','0')), current_max_time - current_min_time)
-                        event['start_time']             = str(current_min_time)
-                        event['duration']               = str(current_max_time - current_min_time)
-                        event['event_count']            = event_count
-                        event['_time']                  = str(current_min_time)
-                        event['_key']                   = event[self.transaction_id]
-                        transaction_dict[event['_key']] = event
+                ## Calculate the transaction's new properties
+                #
+                current_min_time                = min(Decimal(kvevent.get('_time','inf')), Decimal(event['_time']))
+                current_max_time                = max(Decimal(kvevent.get('_time',0)) + Decimal(kvevent.get('duration',0)), Decimal(event['_time']))
+                event_count                     = int(kvevent.get('event_count',0)) + 1
+                #current_duration                = max(Decimal(kvevent.get('duration','0')), current_max_time - current_min_time)
+                event['start_time']             = str(current_min_time)
+                event['duration']               = str(current_max_time - current_min_time)
+                event['event_count']            = event_count
+                event['_time']                  = str(current_min_time)
+                event['_key']                   = event[self.transaction_id]
+                transaction_dict[event['_key']] = event
                      
 
             ## Yield the correct events for each transaction ID

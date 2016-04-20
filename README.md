@@ -9,6 +9,9 @@
 
 ## Changelog
 
+- v1.5.2a
+        - Slight code optimizations
+
 - v1.5.1a
         - BUGFIX: Incomplete backfilling
 
