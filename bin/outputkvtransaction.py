@@ -71,6 +71,36 @@ class outputkvtransaction(GeneratingCommand):
         **Description:** Set **testmode** to true if the results should not be written to the index. Default is **false**.''',
         require=False, default=False, validate=validators.Boolean())
 
+    splunk_server = Option(
+        doc='''
+        **Syntax:** **value=***<splunk_server>*
+        **Description:** Set **splunk_server** to the Splunk Server' host name holding the index.''',
+        require=False, default='localhost')
+     
+    splunkd_port = Option(
+        doc='''
+        **Syntax:** **value=***<splunkd_port>*
+        **Description:** Set **splunkd_port** to the Splunk Server's splunkd port holding the index.''',
+        require=False, default=8089)
+ 
+    host = Option(
+        doc='''
+        **Syntax:** **value=***<host>*
+        **Description:** Set **host** to the value you want the host field to hold.''',
+        require=False)
+        
+    source = Option(
+        doc='''
+        **Syntax:** **value=***<source>*
+        **Description:** Set **source** to the value you want the source field to hold.''',
+        require=False)
+      
+    sourcetype = Option(
+        doc='''
+        **Syntax:** **value=***<sourcetype>*
+        **Description:** Set **sourcetype** to the value you want the sourcetype field to hold.''',
+        require=False)
+        
     action = Option(
         doc='''
         **Syntax:** **value=***<copy|move|flush>*
@@ -90,34 +120,53 @@ class outputkvtransaction(GeneratingCommand):
         require=True)
 
 
+        
     def generate(self):
         ## Initialize an app service to communicate via REST
         #
         sessionKey = self.input_header["sessionKey"]
+        
+        if not self.host:
+            self.host       = self.splunk_server
+        if not self.source:
+            self.source     = self.collection
+        if not self.sourcetype:
+            self.sourcetype = self.collection
 
-        ## Create filter query for requesting KV store entries
+
+        """                                       """
+        """   Retrieve and filter transactions.   """
+        """                                       """
+        
+        ## Assemble filter query for requesting KV store entries
         #
         filter       = []
         current_time = datetime.now()
-
-        ## TODO: Currently not working. Is there a wildcard for REST calls to this endpoint?
-        #
-        if self.transaction_id:
-            filter.append({str(self.transaction_id): '*'})
+            
         if self.tag:
-            filter.append({'tag': str(self.tag)})        
+            filter.append({'tag': str(self.tag)})
+            
         if self.status:
             filter.append({'status': str(self.status)})
+            
         if self.minevents:
-            filter.append({'event_count': {'$gt': int(self.minevents)}})
+            filter.append({'event_count': {'$gte': int(self.minevents)}})
+            
         if self.minduration:
-            filter.append({'duration': {'$gt': str(self.minduration)}})
-        ## TODO: How to compare times?
-        #
+            filter.append({'duration': {'$gte': str(self.minduration)}})
+
         if self.minstartdaysago:
             delta      = timedelta(days=self.minstartdaysago)
             timefilter = current_time - delta
-            filter.append({'_time': {'$lt': timefilter.strftime('%Y-%d-%d %H:%M:%S.%f')}})
+            filter.append({'_time': {'$lte': str((timefilter - datetime(1970,1,1)).total_seconds())}})
+
+        """
+        ## TODO: Currently not working. Yields 'query invalid', even when modifying the not statement.
+        #
+        if self.transaction_id:
+            filter.append({str(self.transaction_id): {'$not': ''}})
+          
+             
         ## TODO: This parameter is not supported atm since the transaction's duration has to be known
         ## Current behaviour is equal to minstartdaysago
         #
@@ -125,42 +174,43 @@ class outputkvtransaction(GeneratingCommand):
             delta      = timedelta(days=self.minenddaysago)
             timefilter = current_time - delta
             filter.append({'_time': {'$lt': timefilter.strftime('%Y-%d-%d %H:%M:%S.%f')}})
-
+        """
+        
         query = {"$and": filter}
+
 
         ## Get kv store entries according to the set parameters
         #
-        self.logger.debug("Filter for transaction ids: %s." % query)
+        #self.logger.debug("Filter for transaction ids: %s." % query)
         if len(filter) > 0:
             uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?sort=_time&query=%s' % (self.collection, urllib.quote(json.dumps(query)))
         else:
             uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s' % self.collection
         serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
         transactions                  = json.loads(serverContent)
-
-        ## Convert list of dict to dict of dict
-        #
-        transactions_dict = {item['_key']:item for item in transactions}
+        transactions_dict             = {item['_key']:collections.OrderedDict(item) for item in transactions}
             
         ## Print retrieved events
         ## TODO: Currently raw events cannot be displayed use (| table * as workaround)
         #
         for transaction in transactions_dict:
-            self.logger.debug("Transaction: %s." % transaction)
-            yield collections.OrderedDict(transactions_dict.get(transaction, {}))
+            #self.logger.debug("Transaction: %s." % transaction)
+            yield transactions_dict.get(transaction, {})
 
+            
+        """                                        """
+        """   Copy / move / delete transactions.   """
+        """                                        """
+        
         ## Perform according to the set action if testmode is not true
         #
         if not self.testmode:
             if re.match(r'copy', str(self.action)):
-                ## TODO: Add parameter "splunk_server" to specify an instance to send data to?
-                ##       Add parameters to specify host, source and sourcetype?
-                #
                 ## Open connection and copy data read from collection to index
                 #
-                connection = httplib.HTTPSConnection("localhost", 8089)
+                connection = httplib.HTTPSConnection(self.splunk_server, self.splunkd_port)
                 connection.connect()
-                connection.putrequest("POST", "/services/receivers/stream?index=%s" % self.index)
+                connection.putrequest("POST", "/services/receivers/stream?index=%s&host=%s&source=%s&sourcetype=%s" % (str(self.index), str(self.host), str(self.source), str(self.sourcetype)))
                 connection.putheader("Authorization", "Splunk %s" % sessionKey)
                 connection.putheader("x-splunk-input-mode", "streaming")
                 connection.endheaders()
@@ -169,19 +219,18 @@ class outputkvtransaction(GeneratingCommand):
                     data = transactions_dict.get(transaction, {})
                     del data['_key']
                     del data['_user']
-                    del data['hashes']
+                    del data['_hashes']
                     json_data = json.dumps(data)
-                    connection.send("%s\n" % json_data)
+                    connection.send("%s\n\n" % json_data)
+                    connection.send("\n")
                 connection.close()
 
             elif re.match(r'move', str(self.action)):
-                ## Code copy from 'copy' and 'flush'
-                #
                 ## Open connection and copy data read from collection to index
                 #
-                connection = httplib.HTTPSConnection("localhost", 8089)
+                connection = httplib.HTTPSConnection(self.splunk_server, self.splunkd_port)
                 connection.connect()
-                connection.putrequest("POST", "/services/receivers/stream?index=%s" % self.index)
+                connection.putrequest("POST", "/services/receivers/stream?index=%s&host=%s&source=%s&sourcetype=%s" % (str(self.index), str(self.host), str(self.source), str(self.sourcetype)))
                 connection.putheader("Authorization", "Splunk %s" % sessionKey)
                 connection.putheader("x-splunk-input-mode", "streaming")
                 connection.endheaders()
@@ -190,12 +239,14 @@ class outputkvtransaction(GeneratingCommand):
                     data = transactions_dict.get(transaction, {})
                     del data['_key']
                     del data['_user']
-                    del data['hashes']
+                    del data['_hashes']
                     json_data = json.dumps(data)
-                    connection.send("%s\n" % json_data)
+                    connection.send("%s\n\n" % json_data)
+                    connection.send("\n")
                 connection.close()
 
                 ## Remove read data from collection
+                ## TODO: Create a list of _key after filtering above and do this by key
                 #
                 if len(filter) > 0:
                     uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))

@@ -9,6 +9,10 @@
 
 ## Changelog
 
+- v1.6a
+        - Added parameters to outputkvtransaction to make rerouting and setting metadata possible.
+          The command is now fully functional despite for the optional parameters transaction_id and minenddaysago, which might be removed anyway.
+
 - v1.5.2a
         - Slight code optimizations
 
