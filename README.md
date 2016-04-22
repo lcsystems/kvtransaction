@@ -9,6 +9,9 @@
 
 ## Changelog
 
+- v1.7a
+        - Modified outputkvtransaction's method to connect and send data to indexers
+
 - v1.6a
         - Added parameters to outputkvtransaction to make rerouting and setting metadata possible.
           The command is now fully functional despite for the optional parameters transaction_id and minenddaysago, which might be removed anyway.

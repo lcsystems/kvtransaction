@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-import sys, json, collections, itertools, urllib, httplib, re
+import sys, json, collections, itertools, urllib, re
 import splunk.rest as rest
+import splunklib.client as client
 
 from decimal import *
 from datetime import timedelta, datetime
@@ -208,32 +209,31 @@ class outputkvtransaction(GeneratingCommand):
             if re.match(r'copy', str(self.action)):
                 ## Open connection and copy data read from collection to index
                 #
-                connection = httplib.HTTPSConnection(self.splunk_server, self.splunkd_port)
-                connection.connect()
-                connection.putrequest("POST", "/services/receivers/stream?index=%s&host=%s&source=%s&sourcetype=%s" % (str(self.index), str(self.host), str(self.source), str(self.sourcetype)))
-                connection.putheader("Authorization", "Splunk %s" % sessionKey)
-                connection.putheader("x-splunk-input-mode", "streaming")
-                connection.endheaders()
+                token   = ("Splunk %s" % sessionKey)
+                service = client.connect(host=self.splunk_server, port=self.splunkd_port, token=token)
+                index   = service.indexes[self.index]
+                #socket  = index.attach(host=self.host, source=self.source, sourcetype=self.sourcetype)
 
                 for transaction in transactions_dict:
                     data = transactions_dict.get(transaction, {})
                     del data['_key']
                     del data['_user']
                     del data['_hashes']
+                    ## TODO: Format _time at this point to make noticeable to Splunk?
+                    ##       Only neccessary if the output should have the date of the transaction's start.
+                    ##       Or _time = _time+duration if it should have the timestamp of the transaction's end.
                     json_data = json.dumps(data)
-                    connection.send("%s\n\n" % json_data)
-                    connection.send("\n")
-                connection.close()
+                    #socket.send("%s\n\n" % json_data)
+                    #socket.send("\n")
+                    index.submit("%s\n\n" % json_data, host=self.host, source=self.source, sourcetype=self.sourcetype)
+                #socket.close()
 
             elif re.match(r'move', str(self.action)):
                 ## Open connection and copy data read from collection to index
                 #
-                connection = httplib.HTTPSConnection(self.splunk_server, self.splunkd_port)
-                connection.connect()
-                connection.putrequest("POST", "/services/receivers/stream?index=%s&host=%s&source=%s&sourcetype=%s" % (str(self.index), str(self.host), str(self.source), str(self.sourcetype)))
-                connection.putheader("Authorization", "Splunk %s" % sessionKey)
-                connection.putheader("x-splunk-input-mode", "streaming")
-                connection.endheaders()
+                token   = ("Splunk %s" % sessionKey)
+                service = client.connect(host=self.splunk_server, port=self.splunkd_port, token=token)
+                index   = service.indexes[self.index]
 
                 for transaction in transactions_dict:
                     data = transactions_dict.get(transaction, {})
@@ -241,12 +241,11 @@ class outputkvtransaction(GeneratingCommand):
                     del data['_user']
                     del data['_hashes']
                     json_data = json.dumps(data)
-                    connection.send("%s\n\n" % json_data)
-                    connection.send("\n")
-                connection.close()
+                    index.submit("%s\n\n" % json_data, host=self.host, source=self.source, sourcetype=self.sourcetype)
 
                 ## Remove read data from collection
-                ## TODO: Create a list of _key after filtering above and do this by key
+                ## TODO: Create a list of _key after filtering above and do this by key?
+                ##       Only neccessary if filtering by transaction_id and/or minenddaysago will be implemented.
                 #
                 if len(filter) > 0:
                     uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
