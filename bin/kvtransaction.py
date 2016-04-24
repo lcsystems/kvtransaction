@@ -165,7 +165,7 @@ class kvtransaction(StreamingCommand):
 
             ## Process events
             #
-            for event in event_iterator:
+            for event in event_list:
                 ## Buffer KV store entry (transaction) correspondig with the current event as orderedDict
                 #
                 kvevent = transaction_dict.get(event[self.transaction_id], {})
