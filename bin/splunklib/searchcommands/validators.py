@@ -381,8 +381,8 @@ class Set(Validator):
         return self.__call__(value)
 
 
-## Custom validator accepting a boolean or a comma or space delimited list of fieldnames
-## TODO: Does not yet support comma separated lists of fieldnames
+## Custom validator accepting boolean values, single fieldnames or a comma- and/or space-separated list of fieldnames
+## Unfortunately by design comma- and/or space-separated lists are not supported as values to an option
 #
 class BoolOrList(Validator):
     ## Validates Boolean option values.
@@ -394,18 +394,11 @@ class BoolOrList(Validator):
         'y': True, 'n': False,
         'yes': True, 'no': False
     }
-
-    ## Validates field name list option values.
-    #
-    #pattern = re.compile(r'''\s*((?!\S+\=+)\"?([_.a-zA-Z-][_.a-zA-Z0-9-]*)\"?(\,?\s*)(?!\S+\=+))+''')
-
-    #def __init__(self, mode='exec'):
-    #    self._mode = mode
     
     def __call__(self, value):
         ## Convert to readable format
         #
-        if not (value is None or isinstance(value, bool)):         
+        if not (value is None or isinstance(value, bool)):       
             ## Handle boolean values
             #
             if value in BoolOrList.truth_values:
@@ -415,8 +408,9 @@ class BoolOrList(Validator):
             #
             elif value not in Boolean.truth_values:
                 #values = re.search('(.+?)(?=\s+\S+\=)', str(value)).group(1)
-                values = re.search('(.+)', str(value)).group(1)
-                items = [v.strip() for v in values.split(',')]
+                #values = re.search('(.+)', str(value)).group(1)
+                #items = [v.strip() for v in values.split(',')]
+                items = [v.strip() for v in value.split(',')]
                 for item in items:
                     if not re.match(r'[_.a-zA-Z-][_.a-zA-Z0-9-]*', item):
                         raise ValueError('Argument "mvlist" contains illegal fieldnames: {}'.format(item))  
@@ -427,9 +421,7 @@ class BoolOrList(Validator):
     def format(self, value):
         if isinstance(value, bool):
             return None if value is None else 't' if value else 'f'
-        elif re.match(r'(.*)(?=\s+\S+\=)', value):
-            return 'list'
         else:
-            return None
+            return None if value is None else 'list'
 
-__all__ = ['Boolean', 'Code', 'Duration', 'File', 'Integer', 'List', 'Map', 'RegularExpression', 'Set']
+__all__ = ['Boolean', 'Code', 'Duration', 'File', 'Integer', 'List', 'Map', 'RegularExpression', 'Set', 'BoolOrList']

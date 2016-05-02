@@ -9,6 +9,11 @@
 
 ## Changelog
 
+- v1.7.1a
+        - Fixed a bug with the custom validator having no effect
+        
+        - Fixed a bug with too long URLs resulting in HTTP 414 errors when making REST requests to the kv store.
+
 - v1.7a
         - Modified outputkvtransaction's method to connect and send data to indexers
 
@@ -65,22 +70,29 @@
 
 - kvtransaction
 
-        - With the current implementation of Search Command Protocol v2 it is not possible to retrieve the current session key,
-          thus valid login credentials have to be provided in plain text inside the script.
-        
+        - With the current implementation of Search Command Protocol v2 it is not possible to retrieve the current session key from the "input_header" object,
+          thus valid login credentials have to be provided in plain text inside the script (line 70).
+
+        - URLs for requesting collections via REST are restricted to either 2000 or ~350000 characters, 
+          limiting the amount of transactions which can be retrieved at once. 
+          The currently implemented workaround (line 160) has significant impact on the command's performance.
+
         - Transactions won't be displayed in the correct time order
 
-        - When setting mvlist=f only the latest event is written to the kv store (expected?)
+        - When setting mvlist=f only the latest event is written to the kv store (TBD: Expected behaviour?)
 
-        - mvdedup deduplicates all values, even the ones already stored (expected?)
+        - mvdedup deduplicates all values, even the ones already stored (TBD: Expected behaviour?)
 
 - outputkvtransaction
 
         - Does not currently return events in correct timeorder
   
-        - Events retrieved from KV Store currently cannot be displayed as raw events (use table * as a workaround)
+        - Events retrieved from KV Store cannot be displayed as raw events
+          Workaround: Append "|table *" to the search
 
-- Custom validator does not accept comma- or space-separated values (this seems to be "working as designed")
+- Validators do not accept comma- or space-separated values. This is "working as designed". See: http://docs.splunk.com/Documentation/PythonSDK).
+  Thus the custom validator for mvlist only accepts boolean values, single field values or comma- and/or space-separated lists in quotes.
+  Workaround: Put comma-space-separated list in quotes. ... mvlist="value1, value2, value3" ...
 
 
 ## TODO
@@ -91,7 +103,7 @@
 
 - kvtransaction
 
-        - TBD: Add parameters maxspan, maxpause and maxevents
+        - TBD: Add parameters maxspan, maxpause, maxevents, force_update
 
         - TBD: Add handling for optional fields status, tag, end_time
 
@@ -99,7 +111,9 @@
 
         - Not all parameters are implemented/working at the moment (see comments in code)
 
-
+        - Add checksumming too to prevent events from contributing multiple times
+        
+        
 ## Installation
 
 - Installation on Search Heads as usual

@@ -69,7 +69,7 @@ class kvtransaction(StreamingCommand):
 
 
     ## With the current implementation of Search Command Protocol v2 valid login credentials have to be provided at this point.
-    ## This necessity will be removed as soon as this requirement is obsolete
+    ## This necessity will be removed and replaced by line 95 as soon as the requirement is obsolete.
     #
     HOST     = "localhost"
     PORT     = 8089
@@ -84,7 +84,7 @@ class kvtransaction(StreamingCommand):
         
         event_list       = []
         results_list     = []
-        id_list          = []     # TODO: Migrate to set?
+        id_list          = []
         field_list       = []
         key_list         = set()
         transaction_dict = {}
@@ -93,6 +93,7 @@ class kvtransaction(StreamingCommand):
         sessionKey       = service.request('auth/', method='GET')
         sessionKey       = re.search('splunkd_\d{4,5}=([^\;]+)', str(sessionKey)).group(1)
         #sessionKey      = self.input_header['sessionKey']
+        #self.logger.debug("Header: %s" % str(self.input_header['sessionKey']))
 
 
         ## Aggregate events, distinct fieldnames and distinct transaction IDs
@@ -122,7 +123,7 @@ class kvtransaction(StreamingCommand):
 
         ## Set mvlist behavior for all relevant fields
         #
-        if self.mvlist:
+        if self.mvlist and isinstance(self.mvlist, bool):
             if self.fieldnames:
                 field_list = self.fieldnames
             else:
@@ -130,7 +131,7 @@ class kvtransaction(StreamingCommand):
 
         elif not isinstance(self.mvlist, bool):
             field_list = [i.strip() for i in self.mvlist.split(',')]
-            
+
             ## Adjust field_list to actually available fieldnames
             #
             for i in field_list:
@@ -154,14 +155,48 @@ class kvtransaction(StreamingCommand):
             ## Create filter query for requesting corresponding KV store entries (transactions)
             ## Retrieve these transactions as dict of orderedDict
             #
-            query                         = {"$or": id_list}
-            #self.logger.debug("Filter for transaction ids: %s." % query)
-            uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
-            serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
-            kvtransactions                = json.loads(serverContent)
-            transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
-            #self.logger.debug("Currently stored transactions: %s." % transaction_dict)
+            
+            # Exception occurs at a length of: 354406 ?!
+            # Maximum URL length for most browsers is 2000 chars
+            max_query_len = 1673 - len(self.collection)
+            query_list    = []
+                    
+            for id in id_list:
+                if len(str(query_list)) + len(str(id)) < max_query_len:
+                    query_list.append(id)
+                else:
+                    query                         = {"$or": query_list}
+                    #self.logger.debug("Query: %s" % str(query))
+                    uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+                    serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
+                    kvtransactions                = json.loads(serverContent)
+                    transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
+                    del query_list[:]
+                    query.clear()
 
+            """
+            ## Test for the maximum length yields 354406 chars: 
+            
+            for id in id_list:
+                query_list.append(id)
+                query                         = {"$or": query_list}
+                uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+                serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
+                try:
+                    kvtransactions   = json.loads(serverContent)
+                except e:
+                    self.logger.debug("Exception length: %s" % len(str(query)))
+                    break
+            """
+
+            """
+            ## Original request mechanism:
+            #query                         = {"$or": id_list}
+            #uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+            #serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
+            #kvtransactions                = json.loads(serverContent)
+            #transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
+            """
 
             ## Process events
             #
@@ -171,7 +206,7 @@ class kvtransaction(StreamingCommand):
                 kvevent = transaction_dict.get(event[self.transaction_id], {})
                 #self.logger.debug("Corresponding KV event: %s." % kvevent)
 
-
+                
                 ## Check if the event already contributed to the transaction
                 ## If so, skip further processing entirely
                 #
