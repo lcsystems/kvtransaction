@@ -69,7 +69,7 @@ class kvtransaction(StreamingCommand):
 
 
     ## With the current implementation of Search Command Protocol v2 valid login credentials have to be provided at this point.
-    ## This necessity will be removed and replaced by line 95 as soon as the requirement is obsolete.
+    ## TODO: This necessity will be removed and replaced by line 95 as soon as the requirement is obsolete.
     #
     HOST     = "localhost"
     PORT     = 8089
@@ -152,51 +152,73 @@ class kvtransaction(StreamingCommand):
         """                                                             """
 
         if len(id_list) > 0:
-            ## Create filter query for requesting corresponding KV store entries (transactions)
-            ## Retrieve these transactions as dict of orderedDict
-            #
-            
-            # Exception occurs at a length of: 354406 ?!
-            # Maximum URL length for most browsers is 2000 chars
-            max_query_len = 1673 - len(self.collection)
-            query_list    = []
-                    
-            for id in id_list:
-                if len(str(query_list)) + len(str(id)) < max_query_len:
-                    query_list.append(id)
-                else:
-                    query                         = {"$or": query_list}
-                    #self.logger.debug("Query: %s" % str(query))
-                    uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
-                    serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
-                    kvtransactions                = json.loads(serverContent)
-                    transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
-                    del query_list[:]
-                    query.clear()
-
-            """
-            ## Test for the maximum length yields 354406 chars: 
-            
-            for id in id_list:
-                query_list.append(id)
-                query                         = {"$or": query_list}
-                uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
-                serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
-                try:
-                    kvtransactions   = json.loads(serverContent)
-                except e:
-                    self.logger.debug("Exception length: %s" % len(str(query)))
-                    break
-            """
-
-            """
             ## Original request mechanism:
             #query                         = {"$or": id_list}
             #uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
             #serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
             #kvtransactions                = json.loads(serverContent)
             #transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
+            
+            
+            ## The original request mechanism yields HTTP 414 errors for too many transaction IDs.
+            ## Exceptions occurs at a URL length of around 354000 chars. Maximum URL length for most browsers is 2000 chars.
+            ## Thresholds up to around 70000 seem to work fine.
+            ## TODO: Which threshold is correct and why?
+            #
+            ## The following piece of code works reliably using usual browsers threshold but is performing bad.
+            #
+            max_query_len = 1673 - len(self.collection)
+            query_list    = []
+                    
+            if len(str(id_list)) > max_query_len:
+                for id in id_list:
+                    if len(str(query_list)) + len(str(id)) < max_query_len:
+                        query_list.append(id)
+                    else:
+                        query                         = {"$or": query_list}
+                        uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+                        serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
+                        kvtransactions                = json.loads(serverContent)
+                        transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
+                        del query_list[:]
+                        query_list.append(id)
+                        query.clear()
+            else:
+                query                         = {"$or": id_list}
+                uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+                serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
+                kvtransactions                = json.loads(serverContent)
+                transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}     
+
+
             """
+            ## So far this is the best performing and equally reliable working pice of code.
+            ## However, where do these threshold values originate from?
+            #
+            max_query_len = 70000 - len(self.collection)
+            query_list    = []
+            
+            if len(str(id_list)) > max_query_len:
+                for id in range(0,len(id_list),50000):
+                    if len(str(query_list)) + len(str(id)) < max_query_len:
+                        query_list.append(id_list[id:id+50000])
+                    else:
+                        query                         = {"$or": query_list}
+                        uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+                        serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
+                        kvtransactions                = json.loads(serverContent)
+                        transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
+                        del query_list[:]
+                        query_list.append(id_list[id:id+50000])
+                        query.clear()
+            else:
+                query                         = {"$or": id_list}
+                uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+                serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
+                kvtransactions                = json.loads(serverContent)
+                transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
+            """
+            
 
             ## Process events
             #

@@ -9,6 +9,11 @@
 
 ## Changelog
 
+- v1.7.2a
+        - Fixed a bug with transactions not being pulled from the collection under certain circumstances
+        
+        - Improved performance for retrieving transactions from the kv store
+
 - v1.7.1a
         - Fixed a bug with the custom validator having no effect
         
@@ -73,9 +78,9 @@
         - With the current implementation of Search Command Protocol v2 it is not possible to retrieve the current session key from the "input_header" object,
           thus valid login credentials have to be provided in plain text inside the script (line 70).
 
-        - URLs for requesting collections via REST are restricted to either 2000 or ~350000 characters, 
-          limiting the amount of transactions which can be retrieved at once. 
-          The currently implemented workaround (line 160) has significant impact on the command's performance.
+        - URLs for requesting collections via REST are restricted in length limiting the amount of transactions which can be retrieved at once. 
+          The currently implemented workaround (line 170) has significant impact on the command's performance.
+          A well performing but unlogical solution is implemented from line 195.
 
         - Transactions won't be displayed in the correct time order
 
