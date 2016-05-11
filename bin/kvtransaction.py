@@ -94,12 +94,16 @@ class kvtransaction(StreamingCommand):
         sessionKey       = re.search('splunkd_\d{4,5}=([^\;]+)', str(sessionKey)).group(1)
         #sessionKey      = self.input_header['sessionKey']
         #self.logger.debug("Header: %s" % str(self.input_header['sessionKey']))
-
+        if self.testmode:
+            self.logger.info("Test mode is activated. Will not write results to KV store")
 
         ## Aggregate events, distinct fieldnames and distinct transaction IDs
         ## Calculate event checksums while doing so
-        #        
+        #
+        self.logger.info("Starting to preprocess incoming events.")
+        event_cnt = 0
         for event in events:
+            event_cnt += 1
             hashable_event = event
             try:
                 del hashable_event['_key']
@@ -119,7 +123,7 @@ class kvtransaction(StreamingCommand):
 
         id_list  = {v[self.transaction_id]:v for v in id_list}.values()
         key_list = list(key_list)
-
+        self.logger.info("Finished preprocessing %s incoming events with %s unique transaction ids" % (event_cnt, len(id_list)))
 
         ## Set mvlist behavior for all relevant fields
         #
@@ -147,7 +151,7 @@ class kvtransaction(StreamingCommand):
 
 
         """                                                             """
-        """ Initialze event specific variables.                         """
+        """ Initialize event specific variables.                        """
         """ Process events and calculate new transaction properties.    """
         """                                                             """
 
@@ -169,7 +173,8 @@ class kvtransaction(StreamingCommand):
             #
             max_query_len = 1673 - len(self.collection)
             query_list    = []
-                    
+            
+            self.logger.info("Retriving transactions already stored in KV store")
             if len(str(id_list)) > max_query_len:
                 for id in id_list:
                     if len(str(query_list)) + len(str(id)) < max_query_len:
@@ -222,6 +227,7 @@ class kvtransaction(StreamingCommand):
 
             ## Process events
             #
+            self.logger.info("Start processing events")
             for event in event_list:
                 ## Buffer KV store entry (transaction) correspondig with the current event as orderedDict
                 #
@@ -261,7 +267,9 @@ class kvtransaction(StreamingCommand):
                             kvfield = kvevent.get(field, [])
                             if not isinstance(kvfield, list):
                                 kvfield = [kvfield]
-                            kvfield.append(event[field])
+                            field_value = event.get(field, "")
+                            if field_value:
+                                kvfield.append(field_value)
                             
                             ## Control deduplication
                             #
@@ -285,10 +293,10 @@ class kvtransaction(StreamingCommand):
                 event['_time']                  = str(current_min_time)
                 event['_key']                   = event[self.transaction_id]
                 transaction_dict[event['_key']] = event
-                     
 
             ## Yield the correct events for each transaction ID
             #
+            self.logger.info("Displaying results in splunk")
             for transaction in transaction_dict:
                 event = transaction_dict.get(transaction, {})
                 yield event
@@ -297,11 +305,13 @@ class kvtransaction(StreamingCommand):
         ## Push into KV store piecemeal in 1000 item chunks, if transactions got updated or created
         #
         if results_list and not self.testmode:
+            self.logger.info("Saving results to kv store")
             for group in grouper(1000, results_list):
                 entries                       = json.dumps(group)
                 uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s/batch_save' % self.collection
                 rest.simpleRequest(uri, sessionKey=sessionKey, jsonargs=entries)
-                #serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey, jsonargs=entries)
-                #response                      = json.loads(serverContent)
+                serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey, jsonargs=entries)
+                response                      = json.loads(serverContent)
+                #self.logger.debug(response)
 
 dispatch(kvtransaction, sys.argv, sys.stdin, sys.stdout, __name__)
