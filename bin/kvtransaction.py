@@ -68,15 +68,6 @@ class kvtransaction(StreamingCommand):
         require=False, default=False, validate=validators.Boolean())
 
 
-    ## With the current implementation of Search Command Protocol v2 valid login credentials have to be provided at this point.
-    ## TODO: This necessity will be removed and replaced by line 95 as soon as the requirement is obsolete.
-    #
-    HOST     = "localhost"
-    PORT     = 8089
-    USERNAME = "admin"
-    PASSWORD = "changeme"
-
-
     def stream(self, events):
         """                                             """
         """   Initialize event independent variables.   """
@@ -89,11 +80,9 @@ class kvtransaction(StreamingCommand):
         key_list         = set()
         transaction_dict = {}
         
-        service          = client.connect(host=self.HOST, port=self.PORT, username=self.USERNAME, password=self.PASSWORD)
-        sessionKey       = service.request('auth/', method='GET')
-        sessionKey       = re.search('splunkd_\d{4,5}=([^\;]+)', str(sessionKey)).group(1)
-        #sessionKey      = self.input_header['sessionKey']
-        #self.logger.debug("Header: %s" % str(self.input_header['sessionKey']))
+        sessionKey       = re.search('u\'session_key\'\:\s+u\'([^\']+)', str(self.metadata)).group(1)
+        #self.logger.debug("Session Key: %s" % str(sessionKey))
+        
         if self.testmode:
             self.logger.info("Test mode is activated. Will not write results to KV store")
 
@@ -171,6 +160,7 @@ class kvtransaction(StreamingCommand):
             #
             ## The following piece of code works reliably using usual browsers threshold but is performing bad.
             #
+            """
             max_query_len = 1673 - len(self.collection)
             query_list    = []
             
@@ -194,9 +184,9 @@ class kvtransaction(StreamingCommand):
                 serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
                 kvtransactions                = json.loads(serverContent)
                 transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}     
-
-
             """
+
+            
             ## So far this is the best performing and equally reliable working pice of code.
             ## However, where do these threshold values originate from?
             #
@@ -222,7 +212,7 @@ class kvtransaction(StreamingCommand):
                 serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
                 kvtransactions                = json.loads(serverContent)
                 transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
-            """
+            
             
 
             ## Process events

@@ -423,5 +423,5 @@ class BoolOrList(Validator):
             return None if value is None else 't' if value else 'f'
         else:
             return None if value is None else 'list'
-
-__all__ = ['Boolean', 'Code', 'Duration', 'File', 'Integer', 'List', 'Map', 'RegularExpression', 'Set', 'BoolOrList']
+            
+__all__ = ['Boolean', 'Code', 'Duration', 'File', 'Integer', 'List', 'Map', 'RegularExpression', 'Set']

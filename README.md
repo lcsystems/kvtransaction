@@ -9,6 +9,13 @@
 
 ## Changelog
 
+- v1.8b
+        - Now using Splunk SDK for Python version 1.6.0
+        
+        - Removed neccessity to provide the command with login credentials
+        
+        - Renamed "outputkvtransaction" to "kvtransactionoutput"
+
 - v1.7.2a
         - Fixed a bug with transactions not being pulled from the collection under certain circumstances
         
@@ -20,10 +27,10 @@
         - Fixed a bug with too long URLs resulting in HTTP 414 errors when making REST requests to the kv store.
 
 - v1.7a
-        - Modified outputkvtransaction's method to connect and send data to indexers
+        - Modified kvtransactionoutput's method to connect and send data to indexers
 
 - v1.6a
-        - Added parameters to outputkvtransaction to make rerouting and setting metadata possible.
+        - Added parameters to kvtransactionoutput to make rerouting and setting metadata possible.
           The command is now fully functional despite for the optional parameters transaction_id and minenddaysago, which might be removed anyway.
 
 - v1.5.2a
@@ -50,7 +57,7 @@
         - Events which did not actively contribute to a transaction will not cause a stored transaction to be displayed
 
 - v1.4  
-        - Added initial version of the "outputkvtransaction" command for collection housekeeping
+        - Added initial version of the "kvtransactionoutput" command for collection housekeeping
 
         - Prettyfied README file
 
@@ -75,25 +82,15 @@
 
 - kvtransaction
 
-        - With the current implementation of Search Command Protocol v2 it is not possible to retrieve the current session key from the "input_header" object,
-          thus valid login credentials have to be provided in plain text inside the script (line 70).
-
         - URLs for requesting collections via REST are restricted in length limiting the amount of transactions which can be retrieved at once. 
           The currently implemented workaround (line 170) has significant impact on the command's performance.
           A well performing but unlogical solution is implemented from line 195.
 
         - Transactions won't be displayed in the correct time order
 
-        - When setting mvlist=f only the latest event is written to the kv store (TBD: Expected behaviour?)
-
-        - mvdedup deduplicates all values, even the ones already stored (TBD: Expected behaviour?)
-
-- outputkvtransaction
+- kvtransactionoutput
 
         - Does not currently return events in correct timeorder
-  
-        - Events retrieved from KV Store cannot be displayed as raw events
-          Workaround: Append "|table *" to the search
 
 - Validators do not accept comma- or space-separated values. This is "working as designed". See: http://docs.splunk.com/Documentation/PythonSDK).
   Thus the custom validator for mvlist only accepts boolean values, single field values or comma- and/or space-separated lists in quotes.
@@ -102,25 +99,32 @@
 
 ## TODO
 
-- Bugfixing
+- Fix issues listed above
 
 - Remove debug logging from release version when finished developing
+
+
+## TBD
 
 - kvtransaction
 
         - TBD: Add parameters maxspan, maxpause, maxevents, force_update
 
         - TBD: Add handling for optional fields status, tag, end_time
+        
+        - TBD: Setting mvlist=f only writes the latest event to the kv store
+        
+        - TBD: mvdedup also deduplicates already stored entries
 
-- outputkvtransaction
+- kvtransactionoutput
 
-        - Not all parameters are implemented/working at the moment (see comments in code)
+        - TBD: Not all parameters are implemented/working at the moment (see comments in code)
 
-        - Add checksumming too to prevent events from contributing multiple times
+        - TBD: Add checksumming too to prevent events from contributing multiple times
         
         
 ## Installation
 
-- Installation on Search Heads as usual
+- Installation on Search Heads as usual (ensure the app folder is named "SA-kvtransaction")
 
 - Create collections as needed containing the mandatory fields _time, duration, event_count, _hashes
