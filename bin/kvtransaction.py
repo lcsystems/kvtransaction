@@ -68,6 +68,7 @@ class kvtransaction(StreamingCommand):
         require=False, default=False, validate=validators.Boolean())
 
 
+
     def stream(self, events):
         """                                             """
         """   Initialize event independent variables.   """
@@ -81,7 +82,8 @@ class kvtransaction(StreamingCommand):
         transaction_dict = {}
         
         sessionKey       = re.search('u\'session_key\'\:\s+u\'([^\']+)', str(self.metadata)).group(1)
-        #self.logger.debug("Session Key: %s" % str(sessionKey))
+        #self.logger.debug("Session Key2: %s" % str(sessionKey))
+        
         
         if self.testmode:
             self.logger.info("Test mode is activated. Will not write results to KV store")
@@ -100,6 +102,10 @@ class kvtransaction(StreamingCommand):
                 del hashable_event['duration']
                 del hashable_event['start_time']
                 del hashable_event['_hashes']
+                
+                for key in hashable_event:
+                    if re.match(r'\_latest\_.+', key):
+                        del hashable_event[key]
             except:
                 pass
             event['_hashes'] = str(hashlib.md5(json.dumps(hashable_event)).hexdigest())
@@ -116,7 +122,7 @@ class kvtransaction(StreamingCommand):
 
         ## Set mvlist behavior for all relevant fields
         #
-        if self.mvlist and isinstance(self.mvlist, bool):
+        if isinstance(self.mvlist, bool):
             if self.fieldnames:
                 field_list = self.fieldnames
             else:
@@ -210,7 +216,10 @@ class kvtransaction(StreamingCommand):
                 query                         = {"$or": id_list}
                 uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
                 serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
-                kvtransactions                = json.loads(serverContent)
+                try:
+                    kvtransactions                = json.loads(serverContent)
+                except:
+                    raise ValueError("REST call returned invalid response. Presumably an invalid collection was provided: %s" % self.collection)
                 transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
             
             
@@ -251,16 +260,23 @@ class kvtransaction(StreamingCommand):
                 #
                 if self.mvlist or not isinstance(self.mvlist, bool):                                           
                     for field in field_list:
-                        if field == self.transaction_id or field == '_time' or field == '_hashes':
+                        if field == self.transaction_id or field == '_time' or field == '_hashes' or re.match(r'\_latest\_.+', str(field)):
                             continue
                         else:
-                            kvfield = kvevent.get(field, [])
+                            kvfield      = kvevent.get(field, [])
+                            latest_field = "_latest_" + field
                             if not isinstance(kvfield, list):
                                 kvfield = [kvfield]
                             field_value = event.get(field, "")
-                            if field_value:
+                            if field_value and len(field_value) > 0:
                                 kvfield.append(field_value)
-                            
+                                if Decimal(event['_time']) > Decimal(kvevent.get('_time',0)) + Decimal(kvevent.get('duration',0)):
+                                    event[latest_field] = field_value
+                                else:
+                                    event[latest_field] = kvevent.get(latest_field, "")
+                            else:
+                                event[latest_field] = kvevent.get(latest_field, "")
+                                
                             ## Control deduplication
                             #
                             if self.mvdedup:
@@ -268,7 +284,24 @@ class kvtransaction(StreamingCommand):
                             event[field] = kvfield
 
                 if not self.mvlist:
-                    pass
+                    for field in field_list:
+                        if field == self.transaction_id or field == '_time' or field == '_hashes' or re.match(r'\_latest\_.+', str(field)):
+                            continue
+                        else:
+                            kvfield      = kvevent.get(field, [])
+                            latest_field = "_latest_" + field
+                            field_value  = event.get(field, "")
+                            if field_value and len(field_value) > 0:
+                                if Decimal(event['_time']) > Decimal(kvevent.get('_time',0)) + Decimal(kvevent.get('duration',0)):
+                                    kvfield             = field_value
+                                    event[latest_field] = field_value
+                                else:
+                                    kvfield             = kvevent.get(latest_field, "")
+                                    event[latest_field] = kvevent.get(latest_field, "")
+                            else:
+                                kvfield             = kvevent.get(latest_field, "")
+                                event[latest_field] = kvevent.get(latest_field, "")
+                            event[field] = kvfield
 
 
                 ## Calculate the transaction's new properties

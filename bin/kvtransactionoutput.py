@@ -54,13 +54,13 @@ class outputkvtransaction(GeneratingCommand):
         **Description:** Filter by field which is used as unique identifier for the transaction.''',
         require=False, validate=validators.Fieldname())
 
-    tag = Option(
+    tag_txn = Option(
         doc='''
         **Syntax:** **value=***<string>*
         **Description:** Filter by field used as tag for the transaction.''',
         require=False)
 
-    status = Option(
+    closed_txn = Option(
         doc='''
         **Syntax:** **value=***<string>*
         **Description:** Filter by field used as status for the transaction.''',
@@ -144,11 +144,11 @@ class outputkvtransaction(GeneratingCommand):
         filter       = []
         current_time = datetime.now()
             
-        if self.tag:
-            filter.append({'tag': str(self.tag)})
+        if self.tag_txn:
+            filter.append({'tag_txn': str(self.tag_txn)})
             
-        if self.status:
-            filter.append({'status': str(self.status)})
+        if self.closed_txn:
+            filter.append({'closed_txn': str(self.closed_txn)})
             
         if self.minevents:
             filter.append({'event_count': {'$gte': int(self.minevents)}})
@@ -219,6 +219,12 @@ class outputkvtransaction(GeneratingCommand):
                     del data['_key']
                     del data['_user']
                     del data['_hashes']
+                    del data['tag_txn']
+                    del data['closed_txn']
+                    for key in data:
+                        if re.match(r'\_latest\_.+', key):
+                            del data[key]
+                            
                     ## TODO: Format _time at this point to make noticeable to Splunk?
                     ##       Only neccessary if the output should have the date of the transaction's start.
                     ##       Or _time = _time+duration if it should have the timestamp of the transaction's end.
@@ -240,6 +246,12 @@ class outputkvtransaction(GeneratingCommand):
                     del data['_key']
                     del data['_user']
                     del data['_hashes']
+                    del data['tag_txn']
+                    del data['closed_txn']
+                    for key in data:
+                        if re.match(r'\_latest\_.+', key):
+                            del data[key]
+                            
                     json_data = json.dumps(data)
                     index.submit("%s\n\n" % json_data, host=self.host, source=self.source, sourcetype=self.sourcetype)
 

@@ -3,12 +3,17 @@
 ## Copyright 2016 © LC Systems, Switzerland | Germany | Austria.
 ## This Splunk App may only be used in agreement with LC Systems.
 
-## Author: christoph.dittmann@lcsystems.de, harun.kuessner@lcsystems.de
+## Author: christoph.dittmann@lcsystems.de, harun.kuessner@lcsystems.de, mika.borner@lcsystems.ch
 ## Usage:  As a Splunk Supporting Add-on on Search Heads
 
 
 ## Changelog
 
+- v1.8.1b
+        - Fixed a bug with mvlist writing empty fields to the kv store
+        
+        - Renamed options tag to tag_txn and status to closed_txn
+        
 - v1.8b
         - Now using Splunk SDK for Python version 1.6.0
         
@@ -112,13 +117,11 @@
 
         - TBD: Add handling for optional fields status, tag, end_time
         
-        - TBD: Setting mvlist=f only writes the latest event to the kv store
-        
         - TBD: mvdedup also deduplicates already stored entries
 
 - kvtransactionoutput
 
-        - TBD: Not all parameters are implemented/working at the moment (see comments in code)
+        - TBD: Not all planned parameters are implemented/working at the moment (see comments in code)
 
         - TBD: Add checksumming too to prevent events from contributing multiple times
         
