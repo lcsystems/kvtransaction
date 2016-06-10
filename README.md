@@ -9,6 +9,11 @@
 
 ## Changelog
 
+- v1.8.2b
+        - Fixed undocumented bugs in both commands
+        
+        - Performance optimizations for both commands
+        
 - v1.8.1b
         - Fixed a bug with mvlist writing empty fields to the kv store
         

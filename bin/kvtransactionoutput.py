@@ -184,7 +184,7 @@ class outputkvtransaction(GeneratingCommand):
         #
         #self.logger.debug("Filter for transaction ids: %s." % query)
         if len(filter) > 0:
-            uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?sort=_time&query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+            uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
         else:
             uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s' % self.collection
         serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
@@ -219,10 +219,16 @@ class outputkvtransaction(GeneratingCommand):
                     del data['_key']
                     del data['_user']
                     del data['_hashes']
-                    del data['tag_txn']
-                    del data['closed_txn']
+                    try:
+                        del data['tag_txn']
+                    except:
+                        pass
+                    try:
+                        del data['closed_txn']
+                    except:
+                        pass
                     for key in data:
-                        if re.match(r'\_latest\_.+', key):
+                        if '__latest_' in key:
                             del data[key]
                             
                     ## TODO: Format _time at this point to make noticeable to Splunk?
@@ -246,10 +252,16 @@ class outputkvtransaction(GeneratingCommand):
                     del data['_key']
                     del data['_user']
                     del data['_hashes']
-                    del data['tag_txn']
-                    del data['closed_txn']
+                    try:
+                        del data['tag_txn']
+                    except:
+                        pass
+                    try:
+                        del data['closed_txn']
+                    except:
+                        pass
                     for key in data:
-                        if re.match(r'\_latest\_.+', key):
+                        if '__latest_' in key:
                             del data[key]
                             
                     json_data = json.dumps(data)

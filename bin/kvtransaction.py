@@ -104,7 +104,7 @@ class kvtransaction(StreamingCommand):
                 del hashable_event['_hashes']
                 
                 for key in hashable_event:
-                    if re.match(r'\_latest\_.+', key):
+                    if '__latest_' in key:
                         del hashable_event[key]
             except:
                 pass
@@ -207,7 +207,10 @@ class kvtransaction(StreamingCommand):
                         query                         = {"$or": query_list}
                         uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
                         serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
-                        kvtransactions                = json.loads(serverContent)
+                        try:
+                            kvtransactions            = json.loads(serverContent)
+                        except:
+                            raise ValueError("REST call returned invalid response. Presumably an invalid collection was provided: %s" % self.collection)
                         transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
                         del query_list[:]
                         query_list.append(id_list[id:id+50000])
@@ -230,7 +233,9 @@ class kvtransaction(StreamingCommand):
             for event in event_list:
                 ## Buffer KV store entry (transaction) correspondig with the current event as orderedDict
                 #
-                kvevent = transaction_dict.get(event[self.transaction_id], {})
+                kvevent     = transaction_dict.get(event[self.transaction_id], {})
+                kv_max_time = Decimal(kvevent.get('_time',0)) + Decimal(kvevent.get('duration',0))
+                event_time  = Decimal(event['_time'])
                 #self.logger.debug("Corresponding KV event: %s." % kvevent)
 
                 
@@ -260,17 +265,17 @@ class kvtransaction(StreamingCommand):
                 #
                 if self.mvlist or not isinstance(self.mvlist, bool):                                           
                     for field in field_list:
-                        if field == self.transaction_id or field == '_time' or field == '_hashes' or re.match(r'\_latest\_.+', str(field)):
+                        if field == self.transaction_id or field == '_time' or field == '_hashes' or '__latest_' in key:
                             continue
                         else:
                             kvfield      = kvevent.get(field, [])
-                            latest_field = "_latest_" + field
+                            latest_field = "__latest_%s" % field
                             if not isinstance(kvfield, list):
                                 kvfield = [kvfield]
                             field_value = event.get(field, "")
                             if field_value and len(field_value) > 0:
                                 kvfield.append(field_value)
-                                if Decimal(event['_time']) > Decimal(kvevent.get('_time',0)) + Decimal(kvevent.get('duration',0)):
+                                if event_time > kv_max_time:
                                     event[latest_field] = field_value
                                 else:
                                     event[latest_field] = kvevent.get(latest_field, "")
@@ -285,14 +290,14 @@ class kvtransaction(StreamingCommand):
 
                 if not self.mvlist:
                     for field in field_list:
-                        if field == self.transaction_id or field == '_time' or field == '_hashes' or re.match(r'\_latest\_.+', str(field)):
+                        if field == self.transaction_id or field == '_time' or field == '_hashes' or '__latest_' in key:
                             continue
                         else:
                             kvfield      = kvevent.get(field, [])
-                            latest_field = "_latest_" + field
+                            latest_field = "__latest_%s" % field
                             field_value  = event.get(field, "")
                             if field_value and len(field_value) > 0:
-                                if Decimal(event['_time']) > Decimal(kvevent.get('_time',0)) + Decimal(kvevent.get('duration',0)):
+                                if event_time > kv_max_time:
                                     kvfield             = field_value
                                     event[latest_field] = field_value
                                 else:
@@ -306,8 +311,8 @@ class kvtransaction(StreamingCommand):
 
                 ## Calculate the transaction's new properties
                 #
-                current_min_time                = min(Decimal(kvevent.get('_time','inf')), Decimal(event['_time']))
-                current_max_time                = max(Decimal(kvevent.get('_time',0)) + Decimal(kvevent.get('duration',0)), Decimal(event['_time']))
+                current_min_time                = min(Decimal(kvevent.get('_time','inf')), event_time)
+                current_max_time                = max(kv_max_time, event_time)
                 event_count                     = int(kvevent.get('event_count',0)) + 1
                 #current_duration                = max(Decimal(kvevent.get('duration','0')), current_max_time - current_min_time)
                 event['start_time']             = str(current_min_time)
