@@ -92,9 +92,7 @@ class kvtransaction(StreamingCommand):
         ## Calculate event checksums while doing so
         #
         self.logger.info("Starting to preprocess incoming events.")
-        event_cnt = 0
         for event in events:
-            event_cnt += 1
             hashable_event = event
             try:
                 del hashable_event['_key']
@@ -118,7 +116,7 @@ class kvtransaction(StreamingCommand):
 
         id_list  = {v[self.transaction_id]:v for v in id_list}.values()
         key_list = list(key_list)
-        self.logger.info("Finished preprocessing %s incoming events with %s unique transaction ids" % (event_cnt, len(id_list)))
+        self.logger.info("Finished preprocessing %s incoming events with %s unique transaction ids" % (len(event_list), len(id_list)))
 
         ## Set mvlist behavior for all relevant fields
         #
@@ -220,7 +218,7 @@ class kvtransaction(StreamingCommand):
                 uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
                 serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
                 try:
-                    kvtransactions                = json.loads(serverContent)
+                    kvtransactions            = json.loads(serverContent)
                 except:
                     raise ValueError("REST call returned invalid response. Presumably an invalid collection was provided: %s" % self.collection)
                 transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
@@ -314,7 +312,6 @@ class kvtransaction(StreamingCommand):
                 current_min_time                = min(Decimal(kvevent.get('_time','inf')), event_time)
                 current_max_time                = max(kv_max_time, event_time)
                 event_count                     = int(kvevent.get('event_count',0)) + 1
-                #current_duration                = max(Decimal(kvevent.get('duration','0')), current_max_time - current_min_time)
                 event['start_time']             = str(current_min_time)
                 event['duration']               = str(current_max_time - current_min_time)
                 event['event_count']            = event_count
@@ -335,7 +332,7 @@ class kvtransaction(StreamingCommand):
         if results_list and not self.testmode:
             self.logger.info("Saving results to kv store")
             for group in grouper(1000, results_list):
-                entries                       = json.dumps(group)
+                entries                       = json.dumps(group, sort_keys=True)
                 uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s/batch_save' % self.collection
                 rest.simpleRequest(uri, sessionKey=sessionKey, jsonargs=entries)
                 serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey, jsonargs=entries)

@@ -9,7 +9,6 @@ from datetime import timedelta, datetime
 from splunklib.searchcommands import \
     dispatch, GeneratingCommand, Configuration, Option, validators
 
-#@Configuration(streaming=True, generates_timeorder=True)
 @Configuration()
 class outputkvtransaction(GeneratingCommand):
     """ %(synopsis)
@@ -192,7 +191,6 @@ class outputkvtransaction(GeneratingCommand):
         transactions_dict             = {item['_key']:collections.OrderedDict(item) for item in transactions}
             
         ## Print retrieved events
-        ## TODO: Currently raw events cannot be displayed use (| table * as workaround)
         #
         for transaction in transactions_dict:
             #self.logger.debug("Transaction: %s." % transaction)
@@ -230,11 +228,8 @@ class outputkvtransaction(GeneratingCommand):
                     for key in data:
                         if '__latest_' in key:
                             del data[key]
-                            
-                    ## TODO: Format _time at this point to make noticeable to Splunk?
-                    ##       Only neccessary if the output should have the date of the transaction's start.
-                    ##       Or _time = _time+duration if it should have the timestamp of the transaction's end.
-                    json_data = json.dumps(data)
+
+                    json_data = json.dumps(data, sort_keys=True)
                     #socket.send("%s\n\n" % json_data)
                     #socket.send("\n")
                     index.submit("%s\n\n" % json_data, host=self.host, source=self.source, sourcetype=self.sourcetype)
@@ -264,7 +259,7 @@ class outputkvtransaction(GeneratingCommand):
                         if '__latest_' in key:
                             del data[key]
                             
-                    json_data = json.dumps(data)
+                    json_data = json.dumps(data, sort_keys=True)
                     index.submit("%s\n\n" % json_data, host=self.host, source=self.source, sourcetype=self.sourcetype)
 
                 ## Remove read data from collection
