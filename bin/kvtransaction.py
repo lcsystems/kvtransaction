@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, json, collections, itertools, re, base64
+import sys, json, collections, itertools, re, base64, time
 import urllib, hashlib
 import splunklib.client as client
 import splunk.rest as rest
@@ -108,7 +108,10 @@ class kvtransaction(StreamingCommand):
                 pass
             event['_hashes'] = str(hashlib.md5(json.dumps(hashable_event)).hexdigest())
 
-            id_list.append({self.transaction_id: event[self.transaction_id]})
+            try:
+                id_list.append({self.transaction_id: event[self.transaction_id]})
+            except KeyError:
+                pass
             event_list.append(event)
 
             for key in event.keys():
@@ -233,7 +236,10 @@ class kvtransaction(StreamingCommand):
                 #
                 kvevent     = transaction_dict.get(event[self.transaction_id], {})
                 kv_max_time = Decimal(kvevent.get('_time',0)) + Decimal(kvevent.get('duration',0))
-                event_time  = Decimal(event['_time'])
+                try:
+                    event_time = Decimal(event['_time'])
+                except KeyError:
+                    event_time = Decimal(time.time()).quantize(Decimal('.000001'), rounding=ROUND_DOWN)
                 #self.logger.debug("Corresponding KV event: %s." % kvevent)
 
                 
@@ -273,7 +279,7 @@ class kvtransaction(StreamingCommand):
                             field_value = event.get(field, "")
                             if field_value and len(field_value) > 0:
                                 kvfield.append(field_value)
-                                if event_time > kv_max_time:
+                                if event_time > kv_max_time or kv_max_time == '0' or kvevent.get(latest_field, "") == '':
                                     event[latest_field] = field_value
                                 else:
                                     event[latest_field] = kvevent.get(latest_field, "")
@@ -295,20 +301,22 @@ class kvtransaction(StreamingCommand):
                             latest_field = "__latest_%s" % field
                             field_value  = event.get(field, "")
                             if field_value and len(field_value) > 0:
-                                if event_time > kv_max_time:
+                                if event_time > kv_max_time or kv_max_time == '0' or kvevent.get(latest_field, "") == '':
                                     kvfield             = field_value
                                     event[latest_field] = field_value
                                 else:
                                     kvfield             = kvevent.get(latest_field, "")
                                     event[latest_field] = kvevent.get(latest_field, "")
-                            else:
-                                kvfield             = kvevent.get(latest_field, "")
-                                event[latest_field] = kvevent.get(latest_field, "")
+                            #else:
+                            #    kvfield             = kvevent.get(latest_field, "")
+                            #    event[latest_field] = kvevent.get(latest_field, "")
                             event[field] = kvfield
 
 
                 ## Calculate the transaction's new properties
                 #
+                buffer                          = event
+                buffer                          = [buffer.update({kvfield:kvevent[kvfield]}) for kvfield in kvevent if not kvfield in field_list]
                 current_min_time                = min(Decimal(kvevent.get('_time','inf')), event_time)
                 current_max_time                = max(kv_max_time, event_time)
                 event_count                     = int(kvevent.get('event_count',0)) + 1

@@ -9,6 +9,9 @@
 
 ## Changelog
 
+- v1.8.3b
+        - Fixed some undocumented bugs bugs in the kvtransaction command
+
 - v1.8.2b
         - Fixed undocumented bugs in both commands
         
