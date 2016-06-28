@@ -269,7 +269,7 @@ class kvtransaction(StreamingCommand):
                 #
                 if self.mvlist or not isinstance(self.mvlist, bool):                                           
                     for field in field_list:
-                        if field == self.transaction_id or field == '_time' or field == '_hashes' or '__latest_' in key:
+                        if field == self.transaction_id or field == '_time' or field == '_hashes' or '__latest_' in field:
                             continue
                         else:
                             kvfield      = kvevent.get(field, [])
@@ -294,7 +294,7 @@ class kvtransaction(StreamingCommand):
 
                 if not self.mvlist:
                     for field in field_list:
-                        if field == self.transaction_id or field == '_time' or field == '_hashes' or '__latest_' in key:
+                        if field == self.transaction_id or field == '_time' or field == '_hashes' or '__latest_' in field:
                             continue
                         else:
                             kvfield      = kvevent.get(field, [])
