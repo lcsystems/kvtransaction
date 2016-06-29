@@ -203,7 +203,7 @@ class kvtransaction(StreamingCommand):
             if len(str(id_list)) > max_query_len:
                 for id in range(0,len(id_list),50000):
                     if len(str(query_list)) + len(str(id)) < max_query_len:
-                        query_list.append(id_list[id:id+50000])
+                        query_list.extend(id_list[id:id+50000])
                     else:
                         query                         = {"$or": query_list}
                         uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
@@ -214,7 +214,7 @@ class kvtransaction(StreamingCommand):
                             raise ValueError("REST call returned invalid response. Presumably an invalid collection was provided: %s" % self.collection)
                         transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
                         del query_list[:]
-                        query_list.append(id_list[id:id+50000])
+                        query_list.extend(id_list[id:id+50000])
                         query.clear()
             else:
                 query                         = {"$or": id_list}
@@ -343,8 +343,5 @@ class kvtransaction(StreamingCommand):
                 entries                       = json.dumps(group, sort_keys=True)
                 uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s/batch_save' % self.collection
                 rest.simpleRequest(uri, sessionKey=sessionKey, jsonargs=entries)
-                serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey, jsonargs=entries)
-                response                      = json.loads(serverContent)
-                #self.logger.debug(response)
 
 dispatch(kvtransaction, sys.argv, sys.stdin, sys.stdout, __name__)
