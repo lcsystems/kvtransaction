@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, json, collections, itertools, re, base64, time
+import sys, json, collections, itertools, re, time
 import urllib, hashlib
 import splunklib.client as client
 import splunk.rest as rest
