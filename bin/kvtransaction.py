@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, json, collections, itertools, re, time
+import sys, json, collections, itertools, time
 import urllib, hashlib
 import splunklib.client as client
 import splunk.rest as rest
@@ -80,8 +80,8 @@ class kvtransaction(StreamingCommand):
         field_list       = []
         key_list         = set()
         transaction_dict = {}
-        
-        sessionKey       = re.search('u\'session_key\'\:\s+u\'([^\']+)', str(self.metadata)).group(1)
+
+        sessionKey = self.metadata.searchinfo.session_key
         #self.logger.debug("Session Key2: %s" % str(sessionKey))
         
         
