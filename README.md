@@ -9,6 +9,9 @@
 
 ## Changelog
 
+- v1.8.5b
+        - Optimized performance
+        
 - v1.8.4b
         - Fixed undocumented bug causing the API requests to the kv store to never be chunked
         

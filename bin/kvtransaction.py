@@ -214,19 +214,11 @@ class kvtransaction(StreamingCommand):
                 ## Check if the event already contributed to the transaction
                 ## If so, skip further processing entirely
                 #
-                contributed = False
                 kvhashes    = kvevent.get('_hashes', [])
                 if not isinstance(kvhashes, list):
                     kvhashes = [kvhashes]
-
-                for hash in kvhashes:
-                    if event['_hashes'] == hash:
-                        contributed = True
-                        break
-
-                if contributed:
-                    #event_list = [events for events in event_list if not event]
-                    #self.logger.debug("Skipped processing for event %s." % event)
+                if event['_hashes'] in kvhashes:
+                    #self.logger.debug("Skipped processing for event with ID %s." % event[self.transaction_id])
                     continue
                 else:
                     kvhashes.append(event['_hashes'])
@@ -242,9 +234,9 @@ class kvtransaction(StreamingCommand):
                         else:
                             kvfield      = kvevent.get(field, [])
                             latest_field = "__latest_%s" % field
+                            field_value  = event.get(field, "")
                             if not isinstance(kvfield, list):
                                 kvfield = [kvfield]
-                            field_value = event.get(field, "")
                             if field_value and len(field_value) > 0:
                                 kvfield.append(field_value)
                                 if event_time > kv_max_time or kv_max_time == '0' or kvevent.get(latest_field, "") == '':
