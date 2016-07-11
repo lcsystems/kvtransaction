@@ -9,6 +9,11 @@
 
 ## Changelog
 
+- v1.8.4b
+        - Fixed undocumented bug causing the API requests to the kv store to never be chunked
+        
+        - Added option "app" to both commands to set the app holding the collection definition
+        
 - v1.8.3b
         - Fixed some undocumented bugs bugs in the kvtransaction command
 
@@ -138,4 +143,4 @@
 
 - Installation on Search Heads as usual (ensure the app folder is named "SA-kvtransaction")
 
-- Create collections as needed containing the mandatory fields _time, duration, event_count, _hashes
+- Create collections as needed containing the mandatory fields _time, duration, event_count and your custom fields

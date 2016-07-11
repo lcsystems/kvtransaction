@@ -112,6 +112,12 @@ class outputkvtransaction(GeneratingCommand):
         **Syntax:** **value=***<collection>*
         **Description:** Set **collection** to the KV store to read from.''',
         require=True)
+        
+    app = Option(
+        doc='''
+        **Syntax:** **value=***<string>*
+        **Description:** Set **app** to the app containing the KV store definition.''',
+        require=False, default="SA-kvtransaction")
 
     index = Option(
         doc='''
@@ -183,9 +189,9 @@ class outputkvtransaction(GeneratingCommand):
         #
         #self.logger.debug("Filter for transaction ids: %s." % query)
         if len(filter) > 0:
-            uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+            uri = '/servicesNS/nobody/%s/storage/collections/data/%s?query=%s' % (self.app, self.collection, urllib.quote(json.dumps(query)))
         else:
-            uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s' % self.collection
+            uri = '/servicesNS/nobody/%s/storage/collections/data/%s' % (self.app, self.collection)
         serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
         transactions                  = json.loads(serverContent)
         transactions_dict             = {item['_key']:collections.OrderedDict(item) for item in transactions}
@@ -267,18 +273,18 @@ class outputkvtransaction(GeneratingCommand):
                 ##       Only neccessary if filtering by transaction_id and/or minenddaysago will be implemented.
                 #
                 if len(filter) > 0:
-                    uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+                    uri = '/servicesNS/nobody/%s/storage/collections/data/%s?query=%s' % (self.app, self.collection, urllib.quote(json.dumps(query)))
                 else:
-                    uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s' % self.collection
+                    uri = '/servicesNS/nobody/%s/storage/collections/data/%s' % (self.app, self.collection)
                 rest.simpleRequest(uri, sessionKey=sessionKey, method='DELETE')
 
             elif re.match(r'flush', str(self.action)):
                 ## Remove read data from collection
                 #
                 if len(filter) > 0:
-                    uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
+                    uri = '/servicesNS/nobody/%s/storage/collections/data/%s?query=%s' % (self.app, self.collection, urllib.quote(json.dumps(query)))
                 else:
-                    uri = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s' % self.collection
+                    uri = '/servicesNS/nobody/%s/storage/collections/data/%s' % (self.app, self.collection)
                 rest.simpleRequest(uri, sessionKey=sessionKey, method='DELETE')
 
             else:

@@ -20,6 +20,16 @@ def grouper(n, iterable):
            return
        yield chunk
 
+       
+def get_kv_entries(app, collection, sessionKey, transaction_id, id_list):
+    query                         = {"$or": id_list}
+    uri                           = '/servicesNS/nobody/%s/storage/collections/data/%s?query=%s' % (app, collection, urllib.quote(json.dumps(query)))
+    serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
+    try:
+        kvtransactions        = json.loads(serverContent)
+    except:
+        raise ValueError("REST call returned invalid response. Presumably an invalid collection was provided: %s. Details: %s" % (collection, serverContent))
+    return {item[transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
 
 @Configuration()
 class kvtransaction(StreamingCommand):
@@ -52,6 +62,12 @@ class kvtransaction(StreamingCommand):
         **Syntax:** **value=***<string>*
         **Description:** Set **collection** to the KV store to use.''',
         require=True)
+        
+    app = Option(
+        doc='''
+        **Syntax:** **value=***<string>*
+        **Description:** Set **app** to the app containing the KV store definition.''',
+        require=False, default="SA-kvtransaction")
 
     mvlist = Option(
         doc='''
@@ -152,80 +168,32 @@ class kvtransaction(StreamingCommand):
         """                                                             """
 
         if len(id_list) > 0:
-            ## Original request mechanism:
-            #query                         = {"$or": id_list}
-            #uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
-            #serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
-            #kvtransactions                = json.loads(serverContent)
-            #transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
-            
-            
-            ## The original request mechanism yields HTTP 414 errors for too many transaction IDs.
-            ## Exceptions occurs at a URL length of around 354000 chars. Maximum URL length for most browsers is 2000 chars.
-            ## Thresholds up to around 70000 seem to work fine.
-            ## TODO: Which threshold is correct and why?
+            ## Set maximum length for kv store requests
             #
-            ## The following piece of code works reliably using usual browsers threshold but is performing bad.
+            max_query_len = 2000 - len(self.collection)
+        
+            ## Directly request if limit is not reached
             #
-            """
-            max_query_len = 1673 - len(self.collection)
-            query_list    = []
-            
-            self.logger.info("Retriving transactions already stored in KV store")
-            if len(str(id_list)) > max_query_len:
-                for id in id_list:
-                    if len(str(query_list)) + len(str(id)) < max_query_len:
-                        query_list.append(id)
-                    else:
-                        query                         = {"$or": query_list}
-                        uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
-                        serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
-                        kvtransactions                = json.loads(serverContent)
-                        transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
-                        del query_list[:]
-                        query_list.append(id)
-                        query.clear()
+            if len(str(id_list)) < max_query_len:
+                transaction_dict = get_kv_entries(self.app, self.collection, sessionKey, self.transaction_id, id_list)
+            ## Else request in appropriate chunks
+            #
             else:
-                query                         = {"$or": id_list}
-                uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
-                serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
-                kvtransactions                = json.loads(serverContent)
-                transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}     
-            """
+                len_list   = [len(str(id[self.transaction_id])) for id in id_list]
+                length     = 0
+                last_index = 0
 
-            
-            ## So far this is the best performing and equally reliable working pice of code.
-            ## However, where do these threshold values originate from?
-            #
-            max_query_len = 70000 - len(self.collection)
-            query_list    = []
-            
-            if len(str(id_list)) > max_query_len:
-                for id in range(0,len(id_list),50000):
-                    if len(str(query_list)) + len(str(id)) < max_query_len:
-                        query_list.extend(id_list[id:id+50000])
+                for index, element in enumerate(len_list):
+                    if max_query_len < length + element:
+                        transaction_dict = get_kv_entries(self.app, self.collection, sessionKey, self.transaction_id, id_list[last_index:index])                        
+                        length           = element
+                        last_index       = index
                     else:
-                        query                         = {"$or": query_list}
-                        uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
-                        serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
-                        try:
-                            kvtransactions            = json.loads(serverContent)
-                        except:
-                            raise ValueError("REST call returned invalid response. Presumably an invalid collection was provided: %s" % self.collection)
-                        transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
-                        del query_list[:]
-                        query_list.extend(id_list[id:id+50000])
-                        query.clear()
-            else:
-                query                         = {"$or": id_list}
-                uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s?query=%s' % (self.collection, urllib.quote(json.dumps(query)))
-                serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=sessionKey)
-                try:
-                    kvtransactions            = json.loads(serverContent)
-                except:
-                    raise ValueError("REST call returned invalid response. Presumably an invalid collection was provided: %s" % self.collection)
-                transaction_dict              = {item[self.transaction_id]:collections.OrderedDict(item) for item in kvtransactions}
-            
+                        length     = length + element
+                    ## Trigger condition for the last chunk, since it might never reach the size neccessary for triggering a request otherwise
+                    #
+                    if index == len(len_list):
+                        transaction_dict.update(get_kv_entries(self.app, self.collection, sessionKey, self.transaction_id, id_list[last_index:index]))
             
 
             ## Process events
@@ -315,8 +283,9 @@ class kvtransaction(StreamingCommand):
 
                 ## Calculate the transaction's new properties
                 #
-                buffer                          = event
-                buffer                          = [buffer.update({kvfield:kvevent[kvfield]}) for kvfield in kvevent if not kvfield in field_list]
+                for kvfield in kvevent:
+                    if not kvfield in field_list:
+                        event.update({kvfield:kvevent[kvfield]})
                 current_min_time                = min(Decimal(kvevent.get('_time','inf')), event_time)
                 current_max_time                = max(kv_max_time, event_time)
                 event_count                     = int(kvevent.get('event_count',0)) + 1
@@ -341,7 +310,7 @@ class kvtransaction(StreamingCommand):
             self.logger.info("Saving results to kv store")
             for group in grouper(1000, results_list):
                 entries                       = json.dumps(group, sort_keys=True)
-                uri                           = '/servicesNS/nobody/SA-kvtransaction/storage/collections/data/%s/batch_save' % self.collection
+                uri                           = '/servicesNS/nobody/%s/storage/collections/data/%s/batch_save' % (self.app, self.collection)
                 rest.simpleRequest(uri, sessionKey=sessionKey, jsonargs=entries)
 
 dispatch(kvtransaction, sys.argv, sys.stdin, sys.stdout, __name__)
