@@ -170,6 +170,7 @@ class kvtransaction(StreamingCommand):
         if len(id_list) > 0:
             ## Set maximum length for kv store requests
             #
+            self.logger.info("Retrieving relevant stored transactions.")
             max_query_len = 2000 - len(self.collection)
         
             ## Directly request if limit is not reached
@@ -194,7 +195,7 @@ class kvtransaction(StreamingCommand):
                     #
                     if index == len(len_list):
                         transaction_dict.update(get_kv_entries(self.app, self.collection, sessionKey, self.transaction_id, id_list[last_index:index]))
-            
+            self.logger.info("Retrieved %s stored transactions." % (len(transaction_dict)))
 
             ## Process events
             #
@@ -214,7 +215,7 @@ class kvtransaction(StreamingCommand):
                 ## Check if the event already contributed to the transaction
                 ## If so, skip further processing entirely
                 #
-                kvhashes    = kvevent.get('_hashes', [])
+                kvhashes = kvevent.get('_hashes', [])
                 if not isinstance(kvhashes, list):
                     kvhashes = [kvhashes]
                 if event['_hashes'] in kvhashes:
